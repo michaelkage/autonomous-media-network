@@ -1,0 +1,66 @@
+name: pipeline
+
+# Runs on a schedule, on demand, and whenever new media is dropped into inbox/.
+on:
+  schedule:
+    # 06:17 UTC daily - off the hour, so this does not pile onto every other
+    # scheduled workflow on GitHub's shared runner fleet.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - "inbox/**"
+      - "amn/**"
+      - "pyproject.toml"
+      - ".github/workflows/pipeline.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: amn-pipeline
+  cancel-in-progress: false
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: pip install -e .
+
+      - name: Vet and watermark
+        env:
+          AMN_WATERMARK_TEXT: ${{ vars.AMN_WATERMARK_TEXT }}
+        run: python -m amn.pipeline --root .
+
+      # `set -e` would abort before the results are committed when an asset fails
+      # to decode, so the exit code is recorded and re-raised after committing.
+      - name: Commit results
+        run: |
+          git config user.name "amn-bot"
+          git config user.email "amn-bot@users.noreply.github.com"
+          git add -A inbox outbox rejected build
+          if git diff --staged --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "chore(pipeline): run at $(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
+            # Pushing with GITHUB_TOKEN does not re-trigger workflows, so this
+            # commit cannot loop the pipeline back on itself.
+            git push || echo "::warning::could not push results"
+          fi
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-${{ github.run_number }}
+          path: build/manifest.json
+          if-no-files-found: ignore
+          retention-days: 30

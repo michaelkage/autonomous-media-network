@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Pipeline runtime outputs
+outbox/
+rejected/
+manifest*.json
+!inbox/.gitkeep

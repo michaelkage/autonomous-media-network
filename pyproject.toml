@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autonomous-media-network"
+version = "0.1.0"
+description = "Hands-off pipeline that sources, vets, watermarks and queues media for distribution."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["pillow>=10.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[project.scripts]
+amn = "amn.pipeline:main"
+
+[tool.setuptools.packages.find]
+include = ["amn*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+# ---------------------------------------------------------------------------
+# Vetting Engine thresholds.
+#
+# An image must clear every rule below to be watermarked and published to the
+# manifest. Anything that fails is hard-rejected: no warnings, no "publish
+# anyway". Read at runtime by amn.pipeline.load_thresholds().
+# ---------------------------------------------------------------------------
+[tool.amn]
+min_width = 1080
+min_height = 1080
+min_engagement_rate = 0.02
+allowed_formats = ["JPEG", "PNG", "WEBP"]

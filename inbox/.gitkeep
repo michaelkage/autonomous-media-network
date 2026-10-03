@@ -1,0 +1,10 @@
+Drop images here to queue them for the next pipeline run.
+
+Each image needs a sidecar metrics manifest of the same name, e.g.
+
+    inbox/beach.jpg
+    inbox/beach.json     {"views": 50000, "likes": 2400, "comments": 90, "shares": 310}
+
+Files are consumed by the pipeline: passing assets move to outbox/, anything
+that fails a vetting rule moves to rejected/ with the reasons recorded in
+build/manifest.json.
