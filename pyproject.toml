@@ -8,9 +8,12 @@ version = "0.1.0"
 description = "Hands-off pipeline that sources, vets, watermarks and queues media for distribution."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["pillow>=10.1"]
+dependencies = ["pillow>=10.1", "requests>=2.31"]
 
 [project.optional-dependencies]
+# Bluesky publishing is opt-in: amn.publish imports atproto lazily so the
+# pipeline runs without it installed.
+bluesky = ["atproto>=0.1.0"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [project.scripts]
@@ -39,5 +42,10 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.amn]
 min_width = 1080
 min_height = 1080
+# Absolute interaction floor. Enforced for every source and impossible to
+# satisfy with an invented denominator, unlike the rate below.
+min_likes = 500
+# Only applied when the source reports a real view count. Reddit never does,
+# so in practice this governs Pexels-style sources that carry views.
 min_engagement_rate = 0.02
 allowed_formats = ["JPEG", "PNG", "WEBP"]

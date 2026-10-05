@@ -54,20 +54,52 @@ def test_low_engagement_is_rejected():
 
 def test_engagement_exactly_at_threshold_passes():
     # views * rate == interactions, so this is the boundary, not a rounding case.
-    verdict = vet("JPEG", (2000, 2000), Engagement(views=10_000, likes=200), THRESHOLDS)
+    verdict = vet("JPEG", (2000, 2000), Engagement(views=25_000, likes=500), THRESHOLDS)
     assert verdict.passed
 
 
-def test_zero_views_rejected_without_dividing_by_zero():
-    verdict = vet("JPEG", (2000, 2000), Engagement(views=0, likes=999), THRESHOLDS)
-    assert not verdict.passed
-    assert any("engagement rate 0.00%" in reason for reason in verdict.reasons)
+def test_missing_views_skips_the_rate_check():
+    # Reddit reports upvotes but never views. Rather than invent a denominator,
+    # the rate rule is skipped and the absolute likes floor decides.
+    engagement = Engagement(views=0, likes=900)
+    assert not engagement.has_views
+    assert engagement.rate == 0.0
+
+    verdict = vet("JPEG", (2000, 2000), engagement, THRESHOLDS)
+    assert verdict.passed
+    assert not any("engagement rate" in reason for reason in verdict.reasons)
 
 
 def test_all_failures_are_reported_at_once():
     verdict = vet("BMP", (100, 100), Engagement(views=100, likes=1), THRESHOLDS)
     assert not verdict.passed
-    assert len(verdict.reasons) == 3
+    # format, resolution, likes floor, rate
+    assert len(verdict.reasons) == 4
+
+
+def test_low_likes_is_rejected_even_with_a_high_rate():
+    # The floor is absolute: a tiny audience that loves it is not enough.
+    engagement = Engagement(views=100, likes=99, comments=1)
+    assert engagement.rate == 1.0  # 100% rate
+    verdict = vet("JPEG", (2000, 2000), engagement, THRESHOLDS)
+    assert not verdict.passed
+    assert any("likes 99 below minimum 500" in reason for reason in verdict.reasons)
+
+
+def test_custom_like_floor_is_honoured():
+    lenient = Thresholds(min_likes=10)
+    assert vet("JPEG", (2000, 2000), Engagement(likes=50), lenient).passed
+    strict = Thresholds(min_likes=10_000)
+    assert not vet("JPEG", (2000, 2000), Engagement(likes=50), strict).passed
+
+
+def test_rate_still_catches_a_source_that_reports_views():
+    # A source with real views and huge likes can still fail on rate.
+    engagement = Engagement(views=100_000, likes=600)
+    verdict = vet("JPEG", (2000, 2000), engagement, THRESHOLDS)
+    assert engagement.likes >= THRESHOLDS.min_likes
+    assert not verdict.passed
+    assert any("engagement rate 0.60%" in reason for reason in verdict.reasons)
 
 
 class TestEngagement:
@@ -82,6 +114,9 @@ class TestEngagement:
             ({"views": 100}, Engagement(views=100)),
             ({"views": 100, "likes": 5}, Engagement(views=100, likes=5)),
             ({"views": "100", "shares": "3"}, Engagement(views=100, shares=3)),
+            # `views` is optional: sources that cannot report reach omit it.
+            ({}, Engagement()),
+            ({"likes": 10}, Engagement(likes=10)),
         ],
     )
     def test_from_mapping_fills_defaults_and_coerces(self, data, expected):
@@ -90,8 +125,6 @@ class TestEngagement:
     @pytest.mark.parametrize(
         "data",
         [
-            {},  # no views at all
-            {"likes": 10},  # metrics without reach
             {"views": -1},  # nonsense
             {"views": 10, "likes": -5},  # nonsense
             {"views": "many"},  # unparseable

@@ -31,7 +31,10 @@ ruff check
 1. **Vetting Engine (`amn.vetting`)**: Pure logic. Assesses each asset against hard limits:
    - Minimum resolution: default `1080x1080` (rejects anything smaller, e.g. low-res crops, banners with sub-1080 short edges).
    - Sidecar requirement: every image `foo.ext` must have `foo.json` next to it.
-   - Engagement rate: `(likes + comments + shares) / views`. Rejects anything below threshold (default `2.0%`).
+   - Absolute engagement floor: `min_likes`, default `500`. Enforced for every source.
+   - Engagement rate: `(likes + comments + shares) / views`, minimum `2.0%`, applied **only**
+     when the source reports a real view count. Reddit's public API does not, so this rule
+     is skipped for Reddit rather than fed an invented denominator.
 2. **Watermarking (`amn.watermark`)**: Pillow-driven. Places semi-transparent text with a soft drop shadow in the bottom-right corner, dynamically scaled to the image size. Preserves ICC profiles and EXIF metadata where present.
 3. **Pipeline Orchestrator (`amn.pipeline`)**:
    - Atomic writes via temporary files.
@@ -41,19 +44,20 @@ ruff check
 
 ## CLI Usage
 
-```bash
-# Preview what would happen without touching files:
-amn run --dry-run
+Three subcommands. Thresholds live in `pyproject.toml` under `[tool.amn]`, not in flags.
 
-# Run full pipeline with custom thresholds:
-amn run \
-  --inbox inbox \
-  --outbox outbox \
-  --rejected rejected \
-  --watermark "@yourhandle" \
-  --min-width 1080 \
-  --min-height 1080 \
-  --min-engagement 0.02
+```bash
+# Pull new media from a source into inbox/
+amn fetch --source reddit --query earthporn --limit 10
+amn fetch --source pexels --query forest --limit 10   # needs PEXELS_API_KEY
+
+# Vet, watermark, and write build/manifest.json
+amn run --watermark "@yourhandle"
+amn run --dry-run        # report only, writes/moves/deletes nothing
+
+# Publish the manifest
+amn publish --platform mock
+amn publish --platform bluesky --handle me.bsky.social   # needs the [bluesky] extra
 ```
 
 ## Sidecar Format
@@ -69,9 +73,28 @@ Place alongside the image (e.g. `inbox/post1.png` + `inbox/post1.json`):
 }
 ```
 
-Missing fields default to zero. If `views <= 0`, engagement rate is 0.0% and rejected.
+Every field defaults to zero, and `views` may be omitted entirely. Two rules apply:
+
+- **`min_likes` (default 500)** — an absolute floor, enforced for every source. This is
+  the rule that matters in practice, because it cannot be satisfied by inventing a
+  denominator.
+- **`min_engagement_rate` (default 0.02)** — only checked when the source reports a real
+  `views` count. Reddit's public API never does, so for Reddit this rule is skipped
+  rather than faked.
+
+An asset with no sidecar is rejected outright.
+
+## Duplicate Detection
+
+`build/hashes.json` records a 64-bit Pillow dHash per accepted image. Re-crops,
+resizes and re-compressions land within 5 bits of the original and are rejected; the
+rule lives in `amn.intelligence` and the threshold is `MAX_DISTANCE`.
 
 ## GitHub Actions
 
-- `.github/workflows/ci.yml`: Runs tests + linter on push and PR.
-- `.github/workflows/pipeline.yml`: Scheduled run (every 6 hours) or manual `workflow_dispatch`. Watermarks assets, commits the outbox, and uploads the manifest as an artifact.
+- `.github/workflows/ci.yml`: tests + `ruff check` + `ruff format --check` on push and PR.
+- `.github/workflows/pipeline.yml`: daily at 06:17 UTC, on `workflow_dispatch`, or when
+  `inbox/` changes. Watermarks assets, commits the results back, and uploads the
+  manifest as an artifact.
+
+Watermark text comes from the `AMN_WATERMARK_TEXT` repository variable.

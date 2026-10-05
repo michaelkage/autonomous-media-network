@@ -38,7 +38,7 @@ jobs:
       - name: Vet and watermark
         env:
           AMN_WATERMARK_TEXT: ${{ vars.AMN_WATERMARK_TEXT }}
-        run: python -m amn.pipeline --root .
+        run: python -m amn.pipeline run --root .
 
       # `set -e` would abort before the results are committed when an asset fails
       # to decode, so the exit code is recorded and re-raised after committing.

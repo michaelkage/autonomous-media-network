@@ -183,22 +183,22 @@ class TestConfig:
 class TestCli:
     def test_exits_zero_on_a_clean_run(self, project, add_asset, capsys):
         add_asset()
-        assert main(["--root", str(project), "--watermark", "@amn"]) == 0
+        assert main(["run", "--root", str(project), "--watermark", "@amn"]) == 0
         assert "1 passed" in capsys.readouterr().out
 
     def test_exits_nonzero_when_something_broke(self, project, capsys):
         (project / "inbox" / "corrupt.jpg").write_bytes(b"nope")
-        assert main(["--root", str(project)]) == 1
+        assert main(["run", "--root", str(project)]) == 1
         assert "1 errors" in capsys.readouterr().out
 
     def test_rejections_alone_do_not_fail_the_run(self, project, add_asset, capsys):
         add_asset(size=(100, 100))
-        assert main(["--root", str(project)]) == 0
+        assert main(["run", "--root", str(project)]) == 0
         assert "0 passed, 1 rejected" in capsys.readouterr().out
 
     def test_missing_watermark_text_warns_but_works(self, project, add_asset, capsys):
         add_asset()
-        assert main(["--root", str(project)]) == 0
+        assert main(["run", "--root", str(project)]) == 0
         assert "no watermark text set" in capsys.readouterr().err
 
     def test_repo_pyproject_config_is_internally_valid(self):

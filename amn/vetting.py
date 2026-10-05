@@ -26,6 +26,7 @@ class Thresholds:
 
     min_width: int = 1080
     min_height: int = 1080
+    min_likes: int = 500
     min_engagement_rate: float = 0.02
     allowed_formats: tuple[str, ...] = ("JPEG", "PNG", "WEBP")
 
@@ -39,6 +40,7 @@ class Thresholds:
         return cls(
             min_width=int(data.get("min_width", defaults.min_width)),
             min_height=int(data.get("min_height", defaults.min_height)),
+            min_likes=int(data.get("min_likes", defaults.min_likes)),
             min_engagement_rate=float(
                 data.get("min_engagement_rate", defaults.min_engagement_rate)
             ),
@@ -50,7 +52,7 @@ class Thresholds:
 class Engagement:
     """Engagement metrics for one asset, as measured at the source."""
 
-    views: int
+    views: int = 0
     likes: int = 0
     comments: int = 0
     shares: int = 0
@@ -60,17 +62,29 @@ class Engagement:
         return self.likes + self.comments + self.shares
 
     @property
+    def has_views(self) -> bool:
+        """Whether the source reported a real view count.
+
+        Reddit's public API never returns views, so a fabricated denominator
+        would make the rate a meaningless constant. When this is False the
+        rate check is skipped and the absolute `min_likes` floor does the work.
+        """
+        return self.views > 0
+
+    @property
     def rate(self) -> float:
-        """Interactions per view. Zero when views is zero or negative."""
+        """Interactions per view. Zero when no real view count is available."""
         return self.interactions / self.views if self.views > 0 else 0.0
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Engagement:
-        """Parse a sidecar manifest. Raises ValueError on anything unusable."""
+        """Parse a sidecar manifest. Raises ValueError on anything unusable.
+
+        `views` is optional: sources that do not report it (Reddit) omit it
+        rather than inventing a denominator.
+        """
         if not isinstance(data, Mapping):
             raise ValueError(f"manifest must be a JSON object, got {type(data).__name__}")
-        if "views" not in data:
-            raise ValueError("manifest is missing required field 'views'")
         try:
             values = {field: int(data.get(field, 0)) for field in METRIC_FIELDS}
         except (TypeError, ValueError) as exc:
@@ -126,10 +140,16 @@ def vet(
 
     if engagement is None:
         reasons.append("no engagement metrics available, cannot verify this asset")
-    elif engagement.rate < thresholds.min_engagement_rate:
-        minimum = thresholds.min_engagement_rate * 100
-        actual = engagement.rate * 100
-        reasons.append(f"engagement rate {actual:.2f}% below minimum {minimum:.2f}%")
+    else:
+        # Absolute floor, enforced for every source. Unlike the rate below this
+        # cannot be satisfied by inventing a denominator.
+        if engagement.likes < thresholds.min_likes:
+            reasons.append(f"likes {engagement.likes} below minimum {thresholds.min_likes}")
+        # Rate check only where a real view count exists.
+        if engagement.has_views and engagement.rate < thresholds.min_engagement_rate:
+            minimum = thresholds.min_engagement_rate * 100
+            actual = engagement.rate * 100
+            reasons.append(f"engagement rate {actual:.2f}% below minimum {minimum:.2f}%")
 
     return Verdict(
         passed=not reasons,
