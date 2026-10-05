@@ -56,15 +56,23 @@ jobs:
             echo "::warning::AMN_PUBLISH is on but BLUESKY_HANDLE/BLUESKY_APP_PASSWORD are unset, skipping"
             exit 0
           fi
+          pip install -e ".[bluesky]"
           set +e
           python -m amn.pipeline publish --platform bluesky --root .
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          echo "publish_exit=$?" >> "$GITHUB_OUTPUT"
 
       - name: Commit results
         run: |
           git config user.name "amn-bot"
           git config user.email "amn-bot@users.noreply.github.com"
-          git add -A inbox outbox rejected build
+          # Only add paths that exist: inbox always has .gitkeep, build/outbox/rejected may not
+          git add inbox
+          if [ -d build ]; then git add build; fi
+          if [ -d outbox ]; then git add outbox; fi
+          if [ -d rejected ]; then git add rejected; fi
+          if [ -d inbox ]; then
+            git add inbox/.gitkeep
+          fi
           if git diff --staged --quiet; then
             echo "nothing to commit"
           else
