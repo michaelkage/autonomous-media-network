@@ -102,9 +102,9 @@ rule lives in `amn.intelligence` and the threshold is `MAX_DISTANCE`.
 
 ### Requirements
 
-| Variable/Secret | Purpose |
-|-----------------|---------|
-| `AMN_WATERMARK_TEXT` (repo variable) | Watermark text placed on vetting-passed images. Required for any run. |
-| `AMN_PUBLISH` (repo variable, optional) | Set to `true` to enable the publish step. Off by default — publishing to Bluesky is irreversible. |
-| `BLUESKY_HANDLE` (secret) | Required only when `AMN_PUBLISH=true`. |
-| `BLUESKY_APP_PASSWORD` (secret) | Required only when `AMN_PUBLISH=true`. |
+| Variable | Example | Required? |
+|----------|---------|-----------|
+| `AMN_WATERMARK_TEXT` | `@autonomousmedia` | Yes — unwatermarked output is not the goal |
+| `AMN_PUBLISH` | `true` | No — off by default |
+| `BLUESKY_HANDLE` | `yourname.bsky.social` | Only if `AMN_PUBLISH=true` |
+| `BLUESKY_APP_PASSWORD` | (generate from Bluesky) | Only if `AMN_PUBLISH=true` |
