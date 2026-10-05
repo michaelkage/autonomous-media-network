@@ -36,12 +36,30 @@ jobs:
       - run: pip install -e .
 
       - name: Vet and watermark
+        id: vet
         env:
           AMN_WATERMARK_TEXT: ${{ vars.AMN_WATERMARK_TEXT }}
-        run: python -m amn.pipeline run --root .
+        run: |
+          set +e
+          python -m amn.pipeline run --root .
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
-      # `set -e` would abort before the results are committed when an asset fails
-      # to decode, so the exit code is recorded and re-raised after committing.
+      # Publishing is irreversible: a post cannot be un-shared, only deleted.
+      # Off unless AMN_PUBLISH is explicitly enabled.
+      - name: Publish to Bluesky
+        if: vars.AMN_PUBLISH == 'true'
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+        run: |
+          if [ -z "$BLUESKY_HANDLE" ] || [ -z "$BLUESKY_APP_PASSWORD" ]; then
+            echo "::warning::AMN_PUBLISH is on but BLUESKY_HANDLE/BLUESKY_APP_PASSWORD are unset, skipping"
+            exit 0
+          fi
+          set +e
+          python -m amn.pipeline publish --platform bluesky --root .
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
       - name: Commit results
         run: |
           git config user.name "amn-bot"
@@ -55,6 +73,12 @@ jobs:
             # commit cannot loop the pipeline back on itself.
             git push || echo "::warning::could not push results"
           fi
+
+      - name: Fail if vet had errors
+        if: always() && steps.vet.outputs.exit_code != '0'
+        run: |
+          echo "::error::vet exited with ${{ steps.vet.outputs.exit_code }}, see manifest"
+          exit ${{ steps.vet.outputs.exit_code }}
 
       - name: Upload run artifacts
         if: always()

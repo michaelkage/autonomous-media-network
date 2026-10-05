@@ -251,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
     # Fetch command
     fetch_parser = subparsers.add_parser("fetch", help="Fetch new media from sources.")
     fetch_parser.add_argument(
-        "--source", required=True, choices=["reddit", "pexels"], help="Source to fetch from"
+        "--source", required=True, choices=["reddit"], help="Source to fetch from"
     )
     fetch_parser.add_argument(
         "--query",
@@ -282,33 +282,21 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if result.errors else 0
 
     elif args.command == "fetch":
-        from .fetchers.pexels import PexelsFetcher
+        # Only Reddit is offered: it is the sole source reporting real
+        # per-post engagement, which is what min_likes measures. Pexels was
+        # removed because it publishes no engagement at all, so every asset it
+        # produced was guaranteed to be rejected by the vetting gate.
         from .fetchers.reddit import RedditFetcher
 
-        if args.source == "reddit":
-            user_agent = os.environ.get("REDDIT_USER_AGENT", "amn-fetcher-v1")
-            fetcher = RedditFetcher(user_agent)
-            count = fetcher.fetch(
-                subreddit_name=args.query,
-                limit=args.limit,
-                inbox_dir=args.root / INBOX_DIR,
-            )
-            print(f"successfully fetched {count} assets from r/{args.query}")
-            return 0
-        elif args.source == "pexels":
-            api_key = os.environ.get("PEXELS_API_KEY")
-            if not api_key:
-                print("error: PEXELS_API_KEY env var required", file=sys.stderr)
-                return 1
-
-            fetcher = PexelsFetcher(api_key)
-            count = fetcher.fetch(
-                query=args.query,
-                limit=args.limit,
-                inbox_dir=args.root / INBOX_DIR,
-            )
-            print(f"successfully fetched {count} assets from Pexels ({args.query})")
-            return 0
+        user_agent = os.environ.get("REDDIT_USER_AGENT", "amn-fetcher-v1")
+        fetcher = RedditFetcher(user_agent)
+        count = fetcher.fetch(
+            subreddit_name=args.query,
+            limit=args.limit,
+            inbox_dir=args.root / INBOX_DIR,
+        )
+        print(f"successfully fetched {count} assets from r/{args.query}")
+        return 0
 
     elif args.command == "publish":
         from .publish import BlueskyPublisher, MockPublisher, publish_manifest

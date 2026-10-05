@@ -206,3 +206,46 @@ class TestCli:
         thresholds = load_thresholds(Path(__file__).resolve().parent.parent)
         assert thresholds.min_width >= 1080
         assert thresholds.min_height >= 1080
+        assert thresholds.min_likes == 500
+
+
+def test_reddit_sidecar_has_no_views_field(project: Path):
+    """Regression: the old fetcher wrote views=score*20. That made the
+    engagement rate a constant ~5% regardless of actual reach, defeating
+    the vetting gate’s purpose."""
+    import json
+    from unittest.mock import MagicMock, patch
+
+    from amn.fetchers.reddit import RedditFetcher
+
+    with patch("amn.fetchers.reddit.requests.Session") as mock_sess_class:
+        mock_session = MagicMock()
+        mock_sess_class.return_value = mock_session
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": {
+                "children": [
+                    {
+                        "data": {
+                            "id": "t3_abc",
+                            "url": "https://example.com/img.jpg",
+                            "score": 1234,
+                            "num_comments": 56,
+                        }
+                    }
+                ]
+            }
+        }
+        mock_response.content = b"\x89PNG not real"
+        mock_response.raise_for_status.return_value = None
+        mock_session.get.return_value = mock_response
+
+        fetcher = RedditFetcher("test-agent")
+        count = fetcher.fetch("test", inbox_dir=project / "inbox")
+
+        assert count == 1
+        metrics = json.loads((project / "inbox" / "t3_abc.json").read_text(encoding="utf-8"))
+        assert "views" not in metrics, "Reddit doesn't give views; fabricating them fakes the gate"
+        assert metrics["likes"] == 1234
+        assert metrics["comments"] == 56

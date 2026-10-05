@@ -48,8 +48,11 @@ Three subcommands. Thresholds live in `pyproject.toml` under `[tool.amn]`, not i
 
 ```bash
 # Pull new media from a source into inbox/
-amn fetch --source reddit --query earthporn --limit 10
-amn fetch --source pexels --query forest --limit 10   # needs PEXELS_API_KEY
+amn fetch --source reddit --query earthporn --limit 10   # no key needed
+
+**Note:** The Pexels fetcher has been removed. It could not pass the engagement
+gate because it provides no per-photo metrics. Reddit's public `.json` endpoint
+requires no API approval, so it is the only supported source.
 
 # Vet, watermark, and write build/manifest.json
 amn run --watermark "@yourhandle"
@@ -94,7 +97,14 @@ rule lives in `amn.intelligence` and the threshold is `MAX_DISTANCE`.
 
 - `.github/workflows/ci.yml`: tests + `ruff check` + `ruff format --check` on push and PR.
 - `.github/workflows/pipeline.yml`: daily at 06:17 UTC, on `workflow_dispatch`, or when
-  `inbox/` changes. Watermarks assets, commits the results back, and uploads the
-  manifest as an artifact.
+  `inbox/` changes. Watermarks assets, commits the results, and uploads the manifest
+  as an artifact.
 
-Watermark text comes from the `AMN_WATERMARK_TEXT` repository variable.
+### Requirements
+
+| Variable/Secret | Purpose |
+|-----------------|---------|
+| `AMN_WATERMARK_TEXT` (repo variable) | Watermark text placed on vetting-passed images. Required for any run. |
+| `AMN_PUBLISH` (repo variable, optional) | Set to `true` to enable the publish step. Off by default — publishing to Bluesky is irreversible. |
+| `BLUESKY_HANDLE` (secret) | Required only when `AMN_PUBLISH=true`. |
+| `BLUESKY_APP_PASSWORD` (secret) | Required only when `AMN_PUBLISH=true`. |
