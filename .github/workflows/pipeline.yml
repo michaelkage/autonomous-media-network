@@ -65,20 +65,17 @@ jobs:
         run: |
           git config user.name "amn-bot"
           git config user.email "amn-bot@users.noreply.github.com"
-          # Only add paths that exist: inbox always has .gitkeep, build/outbox/rejected may not
-          git add inbox
-          if [ -d build ]; then git add build; fi
-          if [ -d outbox ]; then git add outbox; fi
-          if [ -d rejected ]; then git add rejected; fi
-          if [ -d inbox ]; then
-            git add inbox/.gitkeep
-          fi
+          set +e  # keep going even if no changes to stage
+          git add inbox || true
+          for dir in build outbox rejected; do
+            if [ -d "${dir}" ] && [ "$(ls -A ${dir} 2>/dev/null)" ]; then
+              git add "${dir}" || true
+            fi
+          done
           if git diff --staged --quiet; then
             echo "nothing to commit"
           else
             git commit -m "chore(pipeline): run at $(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
-            # Pushing with GITHUB_TOKEN does not re-trigger workflows, so this
-            # commit cannot loop the pipeline back on itself.
             git push || echo "::warning::could not push results"
           fi
 
