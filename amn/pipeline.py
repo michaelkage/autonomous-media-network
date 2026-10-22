@@ -66,9 +66,32 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _sidecar_path(source: Path) -> Path:
+    """Return per-image metadata, with legacy fallback when its stem is unambiguous."""
+    specific = source.with_name(source.name + ".json")
+    if specific.is_file():
+        return specific
+
+    legacy = source.with_suffix(".json")
+    if not legacy.is_file():
+        return specific
+
+    # Older inboxes used <stem>.json. Do not assign that shared file to an
+    # arbitrary image if multiple formats with the same stem are queued.
+    siblings = [
+        path
+        for path in source.parent.iterdir()
+        if path.is_file()
+        and path != source
+        and path.stem == source.stem
+        and path.suffix.lower() in IMAGE_SUFFIXES
+    ]
+    return specific if siblings else legacy
+
+
 def _read_engagement(source: Path) -> tuple[Engagement | None, str | None]:
     """Load the sidecar metrics manifest. Returns (engagement, reason_if_broken)."""
-    sidecar = source.with_suffix(".json")
+    sidecar = _sidecar_path(source)
     if not sidecar.is_file():
         return None, None
     try:
@@ -217,7 +240,7 @@ def run(
         path for path in inbox.iterdir() if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
     )
     for source in sources:
-        sidecar = source.with_suffix(".json")
+        sidecar = _sidecar_path(source)
         try:
             verdict, record = process_image(
                 source, outbox, thresholds, watermark_text, dry_run, detector=detector
