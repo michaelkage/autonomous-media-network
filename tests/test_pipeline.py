@@ -50,9 +50,10 @@ class TestPassing:
         assert entry["engagement_rate"] == 0.05
         assert len(entry["sha256"]) == 64
 
-    def test_same_stem_different_formats_do_not_overwrite(self, project, add_asset):
+    def test_same_stem_different_formats_do_not_overwrite(self, project, add_asset, monkeypatch):
         add_asset(name="photo.jpg", color=(10, 20, 30))
         add_asset(name="photo.png", fmt="PNG", color=(200, 210, 220))
+        monkeypatch.setattr("amn.pipeline.DuplicateDetector.is_duplicate", lambda self, image: False)
 
         result = run(project, watermark_text="@amn")
 
@@ -188,7 +189,7 @@ class TestConfig:
     def test_configured_thresholds_are_enforced(self, project, add_asset):
         add_asset(size=(1200, 1200))  # comfortably above the built-in minimum
 
-        result = run(project, thresholds=Thresholds(min_width=4_000, min_height=4_000))
+        result = run(project, thresholds=Thresholds(min_width=4_000, min_height=4_000), watermark_text="@amn")
 
         assert result.passed == []
 
