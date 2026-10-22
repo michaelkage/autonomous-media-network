@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import tomllib
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -121,11 +122,24 @@ def process_image(
         if not verdict.passed:
             return verdict, {}
 
-        output = outbox / f"{source.stem}.jpg"
+        # Include a content digest so different files with the same stem cannot collide.
+        source_digest = _sha256(source)[:10]
+        output = outbox / f"{source.stem}-{source_digest}.jpg"
         if not dry_run:
             outbox.mkdir(parents=True, exist_ok=True)
             watermarked = apply_watermark(image, watermark_text)
-            watermarked.convert("RGB").save(output, "JPEG", quality=JPEG_QUALITY, optimize=True)
+            # Save beside the destination and replace only after the JPEG is complete.
+            with tempfile.NamedTemporaryFile(
+                dir=outbox, suffix=".jpg", delete=False
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+            try:
+                watermarked.convert("RGB").save(
+                    temporary_path, "JPEG", quality=JPEG_QUALITY, optimize=True
+                )
+                temporary_path.replace(output)
+            finally:
+                temporary_path.unlink(missing_ok=True)
 
     # 2. Captioning
     metrics_data = {}
@@ -189,6 +203,14 @@ def run(
 
     if not inbox.is_dir():
         result.errors.append(f"inbox directory not found: {inbox}")
+        return result
+
+    # Dry runs may inspect assets without publishing-ready configuration, but a
+    # real run must never consume sources while producing unwatermarked output.
+    if not dry_run and not watermark_text.strip():
+        result.errors.append(
+            f"watermark text is required; set --watermark or ${WATERMARK_ENV}"
+        )
         return result
 
     sources = sorted(
@@ -256,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     fetch_parser.add_argument(
         "--query",
         default="earthporn",
-        help="Subreddit name for reddit, search term for pexels",
+        help="Subreddit name for Reddit",
     )
     fetch_parser.add_argument("--limit", type=int, default=10, help="Number of assets to fetch")
     fetch_parser.add_argument(
@@ -273,8 +295,6 @@ def main(argv: list[str] | None = None) -> int:
             f"amn: {len(result.passed)} passed, "
             f"{len(result.rejected)} rejected, {len(result.errors)} errors"
         )
-        if not watermark_text and result.passed:
-            print(f"amn: no watermark text set (--watermark or ${WATERMARK_ENV})", file=sys.stderr)
         for item in result.rejected:
             print(f"  rejected {item['source']}: {'; '.join(item['reasons'])}")
         for error in result.errors:
