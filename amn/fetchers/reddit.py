@@ -65,7 +65,7 @@ class RedditFetcher:
             post_id = data_payload.get("id")
             filename = f"{post_id}.jpg"
             image_path = inbox_dir / filename
-            json_path = inbox_dir / f"{post_id}.json"
+            json_path = inbox_dir / f"{filename}.json"
 
             if image_path.exists():
                 continue
