@@ -54,6 +54,7 @@ class TestPassing:
         add_asset(name="photo.jpg", color=(10, 20, 30))
         add_asset(name="photo.png", fmt="PNG", color=(200, 210, 220))
         monkeypatch.setattr("amn.pipeline.DuplicateDetector.is_duplicate", lambda self, image: False)
+        (project / "inbox" / "photo.json").unlink()
         for name in ("photo.jpg", "photo.png"):
             (project / "inbox" / f"{name}.json").write_text(
                 json.dumps({"views": 10_000, "likes": 500}), encoding="utf-8"
