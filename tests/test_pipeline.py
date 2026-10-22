@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from amn.pipeline import RunResult, load_thresholds, main, run
-from amn.vetting import Engagement, Thresholds
+from amn.vetting import Thresholds
 
 
 def read_manifest(root: Path) -> dict:
