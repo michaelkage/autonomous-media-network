@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from amn.pipeline import RunResult, load_thresholds, main, run
-from amn.vetting import Thresholds
+from amn.vetting import Engagement, Thresholds
 
 
 def read_manifest(root: Path) -> dict:
@@ -54,6 +54,10 @@ class TestPassing:
         add_asset(name="photo.jpg", color=(10, 20, 30))
         add_asset(name="photo.png", fmt="PNG", color=(200, 210, 220))
         monkeypatch.setattr("amn.pipeline.DuplicateDetector.is_duplicate", lambda self, image: False)
+        monkeypatch.setattr(
+            "amn.pipeline._read_engagement",
+            lambda source: (Engagement(views=10_000, likes=500), None),
+        )
 
         result = run(project, watermark_text="@amn")
 
