@@ -67,6 +67,14 @@ class TestPassing:
         assert len(outputs) == 2
         assert len({item["output"] for item in result.passed}) == 2
 
+    def test_legacy_sidecar_is_used_when_stem_is_unambiguous(self, project, add_asset):
+        add_asset(name="legacy.jpg", metrics={"views": 10_000, "likes": 500})
+
+        result = run(project, watermark_text="@amn")
+
+        assert len(result.passed) == 1
+        assert not (project / "inbox" / "legacy.json").exists()
+
     def test_watermark_actually_changes_the_pixels(self, project, add_asset):
         source = add_asset(size=(1200, 1200), color=(10, 10, 10))
         with Image.open(source) as before:
@@ -269,7 +277,7 @@ def test_reddit_sidecar_has_no_views_field(project: Path):
         count = fetcher.fetch("test", inbox_dir=project / "inbox")
 
         assert count == 1
-        metrics = json.loads((project / "inbox" / "t3_abc.json").read_text(encoding="utf-8"))
+        metrics = json.loads((project / "inbox" / "t3_abc.jpg.json").read_text(encoding="utf-8"))
         assert "views" not in metrics, "Reddit doesn't give views; fabricating them fakes the gate"
         assert metrics["likes"] == 1234
         assert metrics["comments"] == 56
