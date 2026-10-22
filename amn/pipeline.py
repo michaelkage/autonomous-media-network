@@ -1,6 +1,6 @@
 """Pipeline orchestration and CLI.
 
-inbox/<name>.jpg  +  inbox/<name>.json
+inbox/<name>.jpg  +  inbox/<name>.jpg.json (legacy <name>.json also supported)
     -> vet
     -> passed:  watermark, write outbox/<name>.jpg, delete source
     -> failed:  move to rejected/ with reasons in the manifest
