@@ -53,7 +53,9 @@ class TestPassing:
     def test_same_stem_different_formats_do_not_overwrite(self, project, add_asset, monkeypatch):
         add_asset(name="photo.jpg", color=(10, 20, 30))
         add_asset(name="photo.png", fmt="PNG", color=(200, 210, 220))
-        monkeypatch.setattr("amn.pipeline.DuplicateDetector.is_duplicate", lambda self, image: False)
+        monkeypatch.setattr(
+            "amn.pipeline.DuplicateDetector.is_duplicate", lambda self, image: False
+        )
         (project / "inbox" / "photo.json").unlink()
         for name in ("photo.jpg", "photo.png"):
             (project / "inbox" / f"{name}.json").write_text(
@@ -203,7 +205,11 @@ class TestConfig:
     def test_configured_thresholds_are_enforced(self, project, add_asset):
         add_asset(size=(1200, 1200))  # comfortably above the built-in minimum
 
-        result = run(project, thresholds=Thresholds(min_width=4_000, min_height=4_000), watermark_text="@amn")
+        result = run(
+            project,
+            thresholds=Thresholds(min_width=4_000, min_height=4_000),
+            watermark_text="@amn",
+        )
 
         assert result.passed == []
 
@@ -277,7 +283,9 @@ def test_reddit_sidecar_has_no_views_field(project: Path):
         count = fetcher.fetch("test", inbox_dir=project / "inbox")
 
         assert count == 1
-        metrics = json.loads((project / "inbox" / "t3_abc.jpg.json").read_text(encoding="utf-8"))
+        metrics = json.loads(
+            (project / "inbox" / "t3_abc.jpg.json").read_text(encoding="utf-8")
+        )
         assert "views" not in metrics, "Reddit doesn't give views; fabricating them fakes the gate"
         assert metrics["likes"] == 1234
         assert metrics["comments"] == 56
