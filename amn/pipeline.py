@@ -333,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             return 1
 
-        count = publish_manifest(args.root / BUILD_DIR / "manifest.json", publisher)
+        count = publish_manifest(args.root / BUILD_DIR / "manifest.json", publisher, root=args.root)
         print(f"successfully published {count} assets to {args.platform}")
         return 0
 
