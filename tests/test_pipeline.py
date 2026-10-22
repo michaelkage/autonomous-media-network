@@ -54,10 +54,10 @@ class TestPassing:
         add_asset(name="photo.jpg", color=(10, 20, 30))
         add_asset(name="photo.png", fmt="PNG", color=(200, 210, 220))
         monkeypatch.setattr("amn.pipeline.DuplicateDetector.is_duplicate", lambda self, image: False)
-        monkeypatch.setattr(
-            "amn.pipeline._read_engagement",
-            lambda source: (Engagement(views=10_000, likes=500), None),
-        )
+        for name in ("photo.jpg", "photo.png"):
+            (project / "inbox" / f"{name}.json").write_text(
+                json.dumps({"views": 10_000, "likes": 500}), encoding="utf-8"
+            )
 
         result = run(project, watermark_text="@amn")
 
@@ -73,7 +73,8 @@ class TestPassing:
 
         run(project, watermark_text="@amn")
 
-        with Image.open(project / "outbox" / "photo.jpg") as after:
+        output = next((project / "outbox").glob("photo-*.jpg"))
+        with Image.open(output) as after:
             assert before_rgb.tobytes() != after.tobytes()
 
 
@@ -128,7 +129,7 @@ class TestRejecting:
 
         assert [item["source"] for item in result.passed] == ["good.jpg"]
         assert [item["source"] for item in result.rejected] == ["small.jpg"]
-        assert (project / "outbox" / "good.jpg").is_file()
+        assert len(list((project / "outbox").glob("good-*.jpg"))) == 1
         assert (project / "rejected" / "small.jpg").is_file()
 
 
