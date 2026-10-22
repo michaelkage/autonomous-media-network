@@ -22,7 +22,9 @@ class TestPassing:
         result = run(project, watermark_text="@amn")
 
         assert [item["source"] for item in result.passed] == ["photo.jpg"]
-        output = project / "outbox" / "photo.jpg"
+        outputs = list((project / "outbox").glob("photo-*.jpg"))
+        assert len(outputs) == 1
+        output = outputs[0]
         assert output.is_file()
         with Image.open(output) as image:
             assert image.format == "JPEG"
@@ -44,9 +46,20 @@ class TestPassing:
 
         entry = read_manifest(project)["passed"][0]
         assert entry["source"] == "photo.jpg"
-        assert entry["output"] == "outbox/photo.jpg"
+        assert entry["output"].startswith("outbox/photo-")
         assert entry["engagement_rate"] == 0.05
         assert len(entry["sha256"]) == 64
+
+    def test_same_stem_different_formats_do_not_overwrite(self, project, add_asset):
+        add_asset(name="photo.jpg", color=(10, 20, 30))
+        add_asset(name="photo.png", fmt="PNG", color=(200, 210, 220))
+
+        result = run(project, watermark_text="@amn")
+
+        assert len(result.passed) == 2
+        outputs = list((project / "outbox").glob("photo-*.jpg"))
+        assert len(outputs) == 2
+        assert len({item["output"] for item in result.passed}) == 2
 
     def test_watermark_actually_changes_the_pixels(self, project, add_asset):
         source = add_asset(size=(1200, 1200), color=(10, 10, 10))
@@ -188,18 +201,22 @@ class TestCli:
 
     def test_exits_nonzero_when_something_broke(self, project, capsys):
         (project / "inbox" / "corrupt.jpg").write_bytes(b"nope")
-        assert main(["run", "--root", str(project)]) == 1
+        assert main(["run", "--root", str(project), "--watermark", "@amn"]) == 1
         assert "1 errors" in capsys.readouterr().out
 
     def test_rejections_alone_do_not_fail_the_run(self, project, add_asset, capsys):
         add_asset(size=(100, 100))
-        assert main(["run", "--root", str(project)]) == 0
+        assert main(["run", "--root", str(project), "--watermark", "@amn"]) == 0
         assert "0 passed, 1 rejected" in capsys.readouterr().out
 
-    def test_missing_watermark_text_warns_but_works(self, project, add_asset, capsys):
-        add_asset()
-        assert main(["run", "--root", str(project)]) == 0
-        assert "no watermark text set" in capsys.readouterr().err
+    def test_missing_watermark_fails_closed_without_consuming_assets(
+        self, project, add_asset, capsys
+    ):
+        source = add_asset()
+        assert main(["run", "--root", str(project)]) == 1
+        assert "watermark text is required" in capsys.readouterr().err
+        assert source.is_file()
+        assert not (project / "outbox").exists()
 
     def test_repo_pyproject_config_is_internally_valid(self):
         # Guards the config this repo actually ships.
