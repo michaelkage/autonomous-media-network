@@ -152,9 +152,7 @@ def process_image(
             outbox.mkdir(parents=True, exist_ok=True)
             watermarked = apply_watermark(image, watermark_text)
             # Save beside the destination and replace only after the JPEG is complete.
-            with tempfile.NamedTemporaryFile(
-                dir=outbox, suffix=".jpg", delete=False
-            ) as temporary:
+            with tempfile.NamedTemporaryFile(dir=outbox, suffix=".jpg", delete=False) as temporary:
                 temporary_path = Path(temporary.name)
             try:
                 watermarked.convert("RGB").save(
@@ -231,9 +229,7 @@ def run(
     # Dry runs may inspect assets without publishing-ready configuration, but a
     # real run must never consume sources while producing unwatermarked output.
     if not dry_run and not watermark_text.strip():
-        result.errors.append(
-            f"watermark text is required; set --watermark or ${WATERMARK_ENV}"
-        )
+        result.errors.append(f"watermark text is required; set --watermark or ${WATERMARK_ENV}")
         return result
 
     sources = sorted(
