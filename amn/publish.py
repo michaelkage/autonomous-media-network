@@ -64,9 +64,7 @@ class BlueskyPublisher(Publisher):
             return False
 
 
-def publish_manifest(
-    manifest_path: Path, publisher: Publisher, *, root: Path | None = None
-) -> int:
+def publish_manifest(manifest_path: Path, publisher: Publisher, *, root: Path | None = None) -> int:
     """Process a run manifest and publish all passing assets.
 
     Returns the count of successfully published images.
