@@ -63,7 +63,7 @@ class RedditFetcher:
                 continue
 
             post_id = data_payload.get("id")
-            filename = f"{post_id}.jpg"
+            filename = f"{post_id}{image_suffix}"
             image_path = inbox_dir / filename
             json_path = inbox_dir / f"{filename}.json"
 
