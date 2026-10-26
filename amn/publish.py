@@ -64,7 +64,7 @@ class BlueskyPublisher(Publisher):
             return False
 
 
-def publish_manifest(manifest_path: Path, publisher: Publisher) -> int:
+def publish_manifest(manifest_path: Path, publisher: Publisher, *, root: Path | None = None) -> int:
     """Process a run manifest and publish all passing assets.
 
     Returns the count of successfully published images.
@@ -76,10 +76,16 @@ def publish_manifest(manifest_path: Path, publisher: Publisher) -> int:
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     passed = data.get("passed", [])
 
+    project_root = Path(root) if root is not None else manifest_path.parent.parent
+    project_root = project_root.resolve()
     successes = 0
     for item in passed:
-        # Manifest output paths are relative to root
-        image_path = Path(item["output"])
+        # Resolve manifest paths against the project root, never the caller's cwd.
+        relative_path = Path(item["output"])
+        image_path = (project_root / relative_path).resolve()
+        if not image_path.is_relative_to(project_root):
+            print(f"invalid output path outside project root: {relative_path}")
+            continue
         caption = item.get("caption", "No caption provided.")
 
         if publisher.publish(image_path, caption):

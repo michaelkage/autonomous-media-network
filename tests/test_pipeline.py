@@ -22,7 +22,9 @@ class TestPassing:
         result = run(project, watermark_text="@amn")
 
         assert [item["source"] for item in result.passed] == ["photo.jpg"]
-        output = project / "outbox" / "photo.jpg"
+        outputs = list((project / "outbox").glob("photo-*.jpg"))
+        assert len(outputs) == 1
+        output = outputs[0]
         assert output.is_file()
         with Image.open(output) as image:
             assert image.format == "JPEG"
@@ -44,9 +46,36 @@ class TestPassing:
 
         entry = read_manifest(project)["passed"][0]
         assert entry["source"] == "photo.jpg"
-        assert entry["output"] == "outbox/photo.jpg"
+        assert entry["output"].startswith("outbox/photo-")
         assert entry["engagement_rate"] == 0.05
         assert len(entry["sha256"]) == 64
+
+    def test_same_stem_different_formats_do_not_overwrite(self, project, add_asset, monkeypatch):
+        add_asset(name="photo.jpg", color=(10, 20, 30))
+        add_asset(name="photo.png", fmt="PNG", color=(200, 210, 220))
+        monkeypatch.setattr(
+            "amn.pipeline.DuplicateDetector.is_duplicate", lambda self, image: False
+        )
+        (project / "inbox" / "photo.json").unlink()
+        for name in ("photo.jpg", "photo.png"):
+            (project / "inbox" / f"{name}.json").write_text(
+                json.dumps({"views": 10_000, "likes": 500}), encoding="utf-8"
+            )
+
+        result = run(project, watermark_text="@amn")
+
+        assert len(result.passed) == 2
+        outputs = list((project / "outbox").glob("photo-*.jpg"))
+        assert len(outputs) == 2
+        assert len({item["output"] for item in result.passed}) == 2
+
+    def test_legacy_sidecar_is_used_when_stem_is_unambiguous(self, project, add_asset):
+        add_asset(name="legacy.jpg", metrics={"views": 10_000, "likes": 500})
+
+        result = run(project, watermark_text="@amn")
+
+        assert len(result.passed) == 1
+        assert not (project / "inbox" / "legacy.json").exists()
 
     def test_watermark_actually_changes_the_pixels(self, project, add_asset):
         source = add_asset(size=(1200, 1200), color=(10, 10, 10))
@@ -55,7 +84,8 @@ class TestPassing:
 
         run(project, watermark_text="@amn")
 
-        with Image.open(project / "outbox" / "photo.jpg") as after:
+        output = next((project / "outbox").glob("photo-*.jpg"))
+        with Image.open(output) as after:
             assert before_rgb.tobytes() != after.tobytes()
 
 
@@ -110,7 +140,7 @@ class TestRejecting:
 
         assert [item["source"] for item in result.passed] == ["good.jpg"]
         assert [item["source"] for item in result.rejected] == ["small.jpg"]
-        assert (project / "outbox" / "good.jpg").is_file()
+        assert len(list((project / "outbox").glob("good-*.jpg"))) == 1
         assert (project / "rejected" / "small.jpg").is_file()
 
 
@@ -175,7 +205,11 @@ class TestConfig:
     def test_configured_thresholds_are_enforced(self, project, add_asset):
         add_asset(size=(1200, 1200))  # comfortably above the built-in minimum
 
-        result = run(project, thresholds=Thresholds(min_width=4_000, min_height=4_000))
+        result = run(
+            project,
+            thresholds=Thresholds(min_width=4_000, min_height=4_000),
+            watermark_text="@amn",
+        )
 
         assert result.passed == []
 
@@ -188,18 +222,22 @@ class TestCli:
 
     def test_exits_nonzero_when_something_broke(self, project, capsys):
         (project / "inbox" / "corrupt.jpg").write_bytes(b"nope")
-        assert main(["run", "--root", str(project)]) == 1
+        assert main(["run", "--root", str(project), "--watermark", "@amn"]) == 1
         assert "1 errors" in capsys.readouterr().out
 
     def test_rejections_alone_do_not_fail_the_run(self, project, add_asset, capsys):
         add_asset(size=(100, 100))
-        assert main(["run", "--root", str(project)]) == 0
+        assert main(["run", "--root", str(project), "--watermark", "@amn"]) == 0
         assert "0 passed, 1 rejected" in capsys.readouterr().out
 
-    def test_missing_watermark_text_warns_but_works(self, project, add_asset, capsys):
-        add_asset()
-        assert main(["run", "--root", str(project)]) == 0
-        assert "no watermark text set" in capsys.readouterr().err
+    def test_missing_watermark_fails_closed_without_consuming_assets(
+        self, project, add_asset, capsys
+    ):
+        source = add_asset()
+        assert main(["run", "--root", str(project)]) == 1
+        assert "watermark text is required" in capsys.readouterr().err
+        assert source.is_file()
+        assert not (project / "outbox").exists()
 
     def test_repo_pyproject_config_is_internally_valid(self):
         # Guards the config this repo actually ships.
@@ -229,7 +267,7 @@ def test_reddit_sidecar_has_no_views_field(project: Path):
                     {
                         "data": {
                             "id": "t3_abc",
-                            "url": "https://example.com/img.jpg",
+                            "url": "https://example.com/img.png",
                             "score": 1234,
                             "num_comments": 56,
                         }
@@ -245,7 +283,7 @@ def test_reddit_sidecar_has_no_views_field(project: Path):
         count = fetcher.fetch("test", inbox_dir=project / "inbox")
 
         assert count == 1
-        metrics = json.loads((project / "inbox" / "t3_abc.json").read_text(encoding="utf-8"))
+        metrics = json.loads((project / "inbox" / "t3_abc.png.json").read_text(encoding="utf-8"))
         assert "views" not in metrics, "Reddit doesn't give views; fabricating them fakes the gate"
         assert metrics["likes"] == 1234
         assert metrics["comments"] == 56
