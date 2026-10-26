@@ -283,9 +283,7 @@ def test_reddit_sidecar_has_no_views_field(project: Path):
         count = fetcher.fetch("test", inbox_dir=project / "inbox")
 
         assert count == 1
-        metrics = json.loads(
-            (project / "inbox" / "t3_abc.jpg.json").read_text(encoding="utf-8")
-        )
+        metrics = json.loads((project / "inbox" / "t3_abc.jpg.json").read_text(encoding="utf-8"))
         assert "views" not in metrics, "Reddit doesn't give views; fabricating them fakes the gate"
         assert metrics["likes"] == 1234
         assert metrics["comments"] == 56
