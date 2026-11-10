@@ -113,10 +113,14 @@ def resolve_instagram_operation(
                 row[1] for row in db.execute("PRAGMA table_info(instagram_publish_operations)")
             }
             output_column = "output" if "output" in columns else "NULL"
+            delivery_id_column = "delivery_id" if "delivery_id" in columns else "NULL"
             operation = db.execute(
                 "SELECT container_id, status, "
                 + output_column
-                + " AS output FROM instagram_publish_operations WHERE operation_key = ?",
+                + " AS output, "
+                + delivery_id_column
+                + " AS delivery_id FROM instagram_publish_operations "
+                "WHERE operation_key = ?",
                 (operation_key.strip(),),
             ).fetchone()
             if operation is None:
@@ -173,7 +177,8 @@ def resolve_instagram_operation(
                 ) VALUES (?, 'instagram', ?, ?, 1, ?, NULL, ?)
                 """,
                 (
-                    delivery_id_for("instagram", operation_key.strip()),
+                    operation["delivery_id"]
+                    or delivery_id_for("instagram", operation_key.strip()),
                     str(operation["output"])
                     if operation["output"]
                     else "container:" + str(operation["container_id"]),
