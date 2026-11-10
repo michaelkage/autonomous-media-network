@@ -93,7 +93,6 @@ def test_pipeline_fails_closed_without_watermark(tmp_path: Path) -> None:
     assert "watermark required" in result.errors[0]
 
 
-
 def test_config_rejects_invalid_target_platform_and_non_integer_thresholds() -> None:
     with pytest.raises(ValueError, match="unsupported platform"):
         validate_config(
