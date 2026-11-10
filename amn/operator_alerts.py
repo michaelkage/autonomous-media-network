@@ -25,9 +25,12 @@ def _connect(database: Path) -> sqlite3.Connection:
 
 
 def _table_exists(db: sqlite3.Connection, name: str) -> bool:
-    return db.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
-    ).fetchone() is not None
+    return (
+        db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
+        ).fetchone()
+        is not None
+    )
 
 
 def _incidents(
@@ -220,8 +223,13 @@ def check_operator_alerts(
                         "last_error = CASE WHEN ? THEN NULL ELSE last_error END "
                         "WHERE fingerprint = ?",
                         (
-                            incident["kind"], incident["message"], current,
-                            int(reopened), int(reopened), int(reopened), fingerprint,
+                            incident["kind"],
+                            incident["message"],
+                            current,
+                            int(reopened),
+                            int(reopened),
+                            int(reopened),
+                            fingerprint,
                         ),
                     )
 
