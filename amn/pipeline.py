@@ -595,15 +595,13 @@ def main(argv: list[str] | None = None) -> int:
                 if not sources:
                     raise RuntimeError("no Reddit sources configured for fetch job")
                 reddit_token = os.environ.get("REDDIT_USER_ACCESS_TOKEN")
-        reddit_user_agent = os.environ.get("AMN_REDDIT_USER_AGENT")
-        if not reddit_token or not reddit_user_agent:
-            print(
-                "error: REDDIT_USER_ACCESS_TOKEN and AMN_REDDIT_USER_AGENT are required "
-                "for Reddit Data API access",
-                file=sys.stderr,
-            )
-            return 1
-        fetcher = RedditFetcher(reddit_user_agent, access_token=reddit_token)
+                reddit_user_agent = os.environ.get("AMN_REDDIT_USER_AGENT")
+                if not reddit_token or not reddit_user_agent:
+                    raise RuntimeError(
+                        "REDDIT_USER_ACCESS_TOKEN and AMN_REDDIT_USER_AGENT are required "
+                        "for Reddit Data API access"
+                    )
+                fetcher = RedditFetcher(reddit_user_agent, access_token=reddit_token)
                 total = sum(
                     fetcher.fetch(source, int(payload.get("limit", 10)), job_root / INBOX_DIR)
                     for source in sources
@@ -689,7 +687,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fetch":
         from .fetchers.reddit import RedditFetcher
 
-        fetcher = RedditFetcher(os.environ.get("REDDIT_USER_AGENT", "amn-fetcher-v1"))
+        reddit_token = os.environ.get("REDDIT_USER_ACCESS_TOKEN")
+        reddit_user_agent = os.environ.get("AMN_REDDIT_USER_AGENT")
+        if not reddit_token or not reddit_user_agent:
+            print(
+                "error: REDDIT_USER_ACCESS_TOKEN and AMN_REDDIT_USER_AGENT are required "
+                "for Reddit Data API access",
+                file=sys.stderr,
+            )
+            return 1
+        fetcher = RedditFetcher(reddit_user_agent, access_token=reddit_token)
         if args.query:
             sources = [args.query]
         else:
