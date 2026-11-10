@@ -185,7 +185,8 @@ class InstagramPublisher(Publisher):
                 self._save_operation(operation_key, container_id, "failed")
                 raise RuntimeError(f"Instagram container status: {status}")
             if status == "IN_PROGRESS":
-                self._save_operation(operation_key, container_id, "processing")
+                if operation_status != "publishing":
+                    self._save_operation(operation_key, container_id, "processing")
                 for _ in range(self.max_polls - 1):
                     time.sleep(self.poll_interval)
                     status = self._container_status(container_id)
