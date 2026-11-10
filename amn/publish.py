@@ -14,6 +14,17 @@ from typing import Any
 __all__ = ["Publisher", "MockPublisher", "BlueskyPublisher", "RateLimiter", "publish_manifest"]
 
 
+_LIMITERS_LOCK = threading.Lock()
+_LIMITERS: dict[str, RateLimiter] = {}
+_PUBLISH_LOCKS_LOCK = threading.Lock()
+_PUBLISH_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _publish_lock(key: str) -> threading.Lock:
+    with _PUBLISH_LOCKS_LOCK:
+        return _PUBLISH_LOCKS.setdefault(key, threading.Lock())
+
+
 class RateLimiter:
     """Thread-safe token spacing plus bounded exponential retry delay."""
 
@@ -87,12 +98,23 @@ def _load_state(path: Path) -> dict[str, Any]:
 
 def _save_state(path: Path, state: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    import os
+    import tempfile
+
+    fd, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(state, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        Path(name).replace(path)
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
 
 
-def publish_manifest(
+def _publish_manifest_unlocked(
     manifest_path: Path,
     publisher: Publisher,
     *,
@@ -116,7 +138,10 @@ def publish_manifest(
     state_file = state_path or root / "build" / "publish-state.json"
     state = _load_state(state_file)
     published = state.setdefault(platform_key, {})
-    limiter = RateLimiter(min_interval=0.25)
+    if not isinstance(published, dict):
+        raise ValueError(f"publishing state for {platform_key!r} must be an object")
+    with _LIMITERS_LOCK:
+        limiter = _LIMITERS.setdefault(platform_key, RateLimiter(min_interval=0.25))
     successes = 0
 
     for item in passed:
@@ -146,5 +171,33 @@ def publish_manifest(
                 successes += 1
                 break
             if attempt < retries:
-                time.sleep(limiter.retry_delay(attempt))
+                retry_after = getattr(publisher, "retry_after", None)
+                time.sleep(limiter.retry_delay(attempt, retry_after))
     return successes
+
+
+
+def publish_manifest(
+    manifest_path: Path,
+    publisher: Publisher,
+    *,
+    root: Path | None = None,
+    platform: str | None = None,
+    state_path: Path | None = None,
+    retries: int = 3,
+) -> int:
+    """Serialize local deliveries per target so state and rate limits stay coherent."""
+    manifest_path = Path(manifest_path).resolve()
+    resolved_root = Path(root).resolve() if root else manifest_path.parent.parent.resolve()
+    platform_key = platform or type(publisher).__name__.lower()
+    state_file = Path(state_path) if state_path else resolved_root / "build" / "publish-state.json"
+    lock_key = f"{state_file.resolve()}::{platform_key}"
+    with _publish_lock(lock_key):
+        return _publish_manifest_unlocked(
+            manifest_path,
+            publisher,
+            root=resolved_root,
+            platform=platform_key,
+            state_path=state_file,
+            retries=retries,
+        )
