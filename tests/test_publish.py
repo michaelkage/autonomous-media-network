@@ -3,11 +3,35 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
+import time
 from pathlib import Path
 
 import pytest
 
 from amn.publish import BlueskyPublisher, MockPublisher, Publisher, publish_manifest
+
+
+
+def _publish_from_process(manifest_path: str, root: str, marker_path: str, start_event) -> None:
+    from amn.publish import Publisher, publish_manifest
+
+    class SlowPublisher(Publisher):
+        def publish(self, image_path: Path, caption: str) -> bool:
+            with Path(marker_path).open("a", encoding="utf-8") as handle:
+                handle.write(f"{image_path.name}\\n")
+                handle.flush()
+            time.sleep(0.3)
+            return True
+
+    start_event.wait(timeout=10)
+    publish_manifest(
+        Path(manifest_path),
+        SlowPublisher(),
+        root=Path(root),
+        platform="multiprocess-test",
+        retries=0,
+    )
 
 
 @pytest.fixture
@@ -79,6 +103,28 @@ class TestPublishManifest:
         path = tmp_path / "manifest.json"
         path.write_text(json.dumps({"passed": []}), encoding="utf-8")
         assert publish_manifest(path, MockPublisher()) == 0
+
+
+
+    def test_concurrent_processes_publish_each_delivery_once(self, manifest: Path, tmp_path: Path):
+        context = multiprocessing.get_context("spawn")
+        start_event = context.Event()
+        marker = tmp_path / "published.txt"
+        processes = [
+            context.Process(
+                target=_publish_from_process,
+                args=(str(manifest), str(tmp_path), str(marker), start_event),
+            )
+            for _ in range(2)
+        ]
+        for process in processes:
+            process.start()
+        start_event.set()
+        for process in processes:
+            process.join(timeout=15)
+            assert process.exitcode == 0
+
+        assert marker.read_text(encoding="utf-8").splitlines() == ["one.jpg", "two.jpg"]
 
 
 class TestMockPublisher:
