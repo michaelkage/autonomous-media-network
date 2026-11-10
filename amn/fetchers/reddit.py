@@ -21,9 +21,10 @@ class RedditFetcher:
     ) -> None:
         self.user_agent = user_agent
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": user_agent})
+        headers = {"User-Agent": user_agent}
         if access_token:
-            self.session.headers.update({"Authorization": f"Bearer {access_token}"})
+            headers["Authorization"] = f"Bearer {access_token}"
+        self.session.headers.update(headers)
 
     def fetch(self, subreddit_name: str, limit: int = 10, inbox_dir: Path = Path("inbox")) -> int:
         if not re.fullmatch(r"[A-Za-z0-9_]{2,21}", subreddit_name):
