@@ -73,10 +73,18 @@ def _record_tiktok_webhook(
                 provider TEXT NOT NULL,
                 event_name TEXT NOT NULL,
                 publish_id TEXT,
-                received_at REAL NOT NULL
+                received_at REAL NOT NULL,
+                event_created_at REAL
             )
             """
         )
+        receipt_columns = {
+            row[1] for row in db.execute("PRAGMA table_info(provider_webhook_receipts)")
+        }
+        if "event_created_at" not in receipt_columns:
+            db.execute(
+                "ALTER TABLE provider_webhook_receipts ADD COLUMN event_created_at REAL"
+            )
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS delivery_events (
@@ -97,10 +105,10 @@ def _record_tiktok_webhook(
             cursor = db.execute(
                 """
                 INSERT OR IGNORE INTO provider_webhook_receipts
-                    (receipt_key, provider, event_name, publish_id, received_at)
-                VALUES (?, 'tiktok', ?, ?, ?)
+                    (receipt_key, provider, event_name, publish_id, received_at, event_created_at)
+                VALUES (?, 'tiktok', ?, ?, ?, ?)
                 """,
-                (receipt_key, event_name, publish_id, time.time()),
+                (receipt_key, event_name, publish_id, time.time(), created_at),
             )
             if cursor.rowcount == 0:
                 db.commit()
