@@ -129,7 +129,6 @@ def test_telegram_notification_failure_is_non_fatal_and_sanitized(
     assert "do not expose this error" not in str(alert)
 
 
-
 def test_alerts_cli_uses_private_alert_chat_not_publishing_chat(
     tmp_path: Path, monkeypatch
 ) -> None:
