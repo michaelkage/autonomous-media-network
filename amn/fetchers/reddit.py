@@ -20,8 +20,7 @@ class RedditFetcher:
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent})
 
-    def fetch(self, subreddit_name: str, limit: int = 10,
-              inbox_dir: Path = Path("inbox")) -> int:
+    def fetch(self, subreddit_name: str, limit: int = 10, inbox_dir: Path = Path("inbox")) -> int:
         if not re.fullmatch(r"[A-Za-z0-9_]{2,21}", subreddit_name):
             raise ValueError("invalid subreddit name")
         if not 1 <= limit <= 100:
@@ -30,7 +29,9 @@ class RedditFetcher:
         try:
             response = self.session.get(
                 f"https://www.reddit.com/r/{subreddit_name}/hot.json",
-                params={"limit": limit}, timeout=(5, 20))
+                params={"limit": limit},
+                timeout=(5, 20),
+            )
             response.raise_for_status()
             posts = response.json().get("data", {}).get("children", [])
         except (requests.RequestException, ValueError) as exc:
@@ -42,9 +43,11 @@ class RedditFetcher:
             payload = post.get("data", {})
             image_url = payload.get("url", "")
             post_id = payload.get("id", "")
-            if (not re.fullmatch(r"[A-Za-z0-9_]{1,32}", str(post_id))
-                    or not image_url.startswith("https://")
-                    or not image_url.lower().split("?", 1)[0].endswith(_IMAGE_SUFFIXES)):
+            if (
+                not re.fullmatch(r"[A-Za-z0-9_]{1,32}", str(post_id))
+                or not image_url.startswith("https://")
+                or not image_url.lower().split("?", 1)[0].endswith(_IMAGE_SUFFIXES)
+            ):
                 continue
             image_path, sidecar_path = inbox_dir / f"{post_id}.jpg", inbox_dir / f"{post_id}.json"
             if image_path.exists() and sidecar_path.exists():
@@ -73,8 +76,9 @@ class RedditFetcher:
                     f.write(content)
                     f.flush()
                     os.fsync(f.fileno())
-                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=inbox_dir,
-                                                 delete=False) as f:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", dir=inbox_dir, delete=False
+                ) as f:
                     temp_sidecar = Path(f.name)
                     json.dump(metrics, f)
                     f.flush()
