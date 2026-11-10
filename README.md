@@ -47,6 +47,28 @@ Publishing resolves manifest paths against the project root and records per-plat
 
 Run `amn doctor --root .` before enabling routed publishing. It performs read-only credential/account checks for enabled providers, checks S3 bucket access when storage is configured, and verifies that one passed media asset is publicly reachable for Instagram/TikTok. It never publishes content and reports sanitized failures. The public media URL must serve the exact outbox filenames; AMN does not expose your local filesystem to Meta or TikTok. For automatic uploads, install `pip install -e ".[s3]"` and configure the optional top-level `storage` block with `provider: "s3"` and your bucket name. AWS credentials use the standard `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN` environment variables; S3-compatible endpoints can be supplied through `AMN_S3_ENDPOINT_URL`. The URL path on each Instagram/TikTok target becomes the object-key prefix, so `https://cdn.example.com/outbox` uploads to `outbox/<filename>`. The bucket must be readable through that public CDN/custom domain. Cloudflare R2 works with its S3 endpoint and `region: "auto"`. Instagram publishing uses Meta's two-step container flow and requires a professional account plus a publicly reachable JPEG URL. TikTok photo publishing uses the current PHOTO content-init endpoint, requires a verified public URL domain, creator privacy-level validation, and the `video.publish` scope. TikTok's API also restricts unaudited apps to private visibility. Its creator-info response must be reviewed and the configured privacy option must match the account's returned options. Configure these targets disabled until the app review, OAuth scopes, verified media host, and account-level tests are complete. Static images use TikTok's photo API; no fake looping video conversion is needed. See [Meta content publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing) and [TikTok Direct Post](https://developers.tiktok.com/docs/en/content-posting-api-get-started).
 
+## Durable jobs
+
+AMN can persist fetch, vetting-pipeline, and routed-publishing work in a local SQLite queue:
+
+```bash
+amn jobs enqueue --kind fetch --query earthporn --limit 10 --root .
+amn jobs enqueue --kind pipeline --root .
+amn jobs enqueue --kind publish --root .
+amn jobs list --status pending --root .
+amn jobs worker --once --root .
+# Keep a worker running to process jobs as they arrive:
+amn jobs worker --root .
+```
+
+The queue lives at `build/jobs.sqlite3`. Claims are transactional across local worker processes, each running job has a renewable lease, and crashed workers' expired jobs are reclaimed. Failed jobs retry with bounded exponential backoff until their attempt budget is exhausted. Optional dedupe keys prevent duplicate enqueue requests:
+
+```bash
+amn jobs enqueue --kind fetch --query earthporn --dedupe-key "reddit:earthporn:2026-11-10" --root .
+```
+
+This is deliberately a single-host queue backed by a local SQLite database, not a distributed multi-host broker. Run one or more workers against the same local database; do not put the SQLite file on a network filesystem. Scheduling recurring jobs is a separate deployment concern: cron or a system scheduler can enqueue jobs without keeping the dashboard alive.
+
 ## Diagnostics dashboard
 
 ```bash
