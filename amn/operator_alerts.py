@@ -30,7 +30,9 @@ def _table_exists(db: sqlite3.Connection, name: str) -> bool:
     ).fetchone() is not None
 
 
-def _incidents(database: Path, *, now: float, stale_after_seconds: int) -> dict[str, dict[str, str]]:
+def _incidents(
+    database: Path, *, now: float, stale_after_seconds: int
+) -> dict[str, dict[str, str]]:
     incidents: dict[str, dict[str, str]] = {}
     if not Path(database).is_file():
         return incidents
@@ -52,7 +54,8 @@ def _incidents(database: Path, *, now: float, stale_after_seconds: int) -> dict[
 
         if _table_exists(db, "tiktok_publish_operations"):
             for row in db.execute(
-                "SELECT publish_id, updated_at FROM tiktok_publish_operations WHERE status = 'pending'"
+                "SELECT publish_id, updated_at FROM tiktok_publish_operations "
+                "WHERE status = 'pending'"
             ):
                 age = max(0, int(now - float(row["updated_at"])))
                 if age >= stale_after_seconds:
@@ -68,7 +71,8 @@ def _incidents(database: Path, *, now: float, stale_after_seconds: int) -> dict[
         if _table_exists(db, "instagram_publish_operations"):
             for row in db.execute(
                 "SELECT operation_key, container_id, status, updated_at "
-                "FROM instagram_publish_operations WHERE status IN ('processing', 'ready', 'publishing')"
+                "FROM instagram_publish_operations "
+                "WHERE status IN ('processing', 'ready', 'publishing')"
             ):
                 key = str(row["operation_key"])
                 status = str(row["status"])
@@ -210,7 +214,8 @@ def check_operator_alerts(
                     reopened = row["status"] == "resolved"
                     db.execute(
                         "UPDATE operator_alerts SET kind = ?, message = ?, status = 'active', "
-                        "last_seen = ?, last_attempt_at = CASE WHEN ? THEN NULL ELSE last_attempt_at END, "
+                        "last_seen = ?, "
+                        "last_attempt_at = CASE WHEN ? THEN NULL ELSE last_attempt_at END, "
                         "last_notified_at = CASE WHEN ? THEN NULL ELSE last_notified_at END, "
                         "last_error = CASE WHEN ? THEN NULL ELSE last_error END "
                         "WHERE fingerprint = ?",
@@ -232,7 +237,8 @@ def check_operator_alerts(
                     suppressed += 1
                     continue
                 db.execute(
-                    "UPDATE operator_alerts SET last_attempt_at = ?, attempt_count = attempt_count + 1 "
+                    "UPDATE operator_alerts SET last_attempt_at = ?, "
+                    "attempt_count = attempt_count + 1 "
                     "WHERE fingerprint = ?",
                     (current, fingerprint),
                 )
@@ -250,7 +256,12 @@ def check_operator_alerts(
             ).fetchall()
         for row in due:
             try:
-                _send_telegram(str(bot_token), str(chat_id), f"⚠️ AMN ALERT\n{row['message']}", timeout)
+                _send_telegram(
+                    str(bot_token),
+                    str(chat_id),
+                    f"⚠️ AMN ALERT\n{row['message']}",
+                    timeout,
+                )
             except (requests.RequestException, ValueError, RuntimeError, OSError) as exc:
                 with closing(_connect(database)) as db:
                     db.execute(
@@ -310,4 +321,10 @@ def operator_alert_snapshot(database: Path, *, limit: int = 50) -> dict[str, Any
                 (limit,),
             )
         ]
-    return {"counts": {"active": counts.get("active", 0), "resolved": counts.get("resolved", 0)}, "recent": recent}
+    return {
+        "counts": {
+            "active": counts.get("active", 0),
+            "resolved": counts.get("resolved", 0),
+        },
+        "recent": recent,
+    }
