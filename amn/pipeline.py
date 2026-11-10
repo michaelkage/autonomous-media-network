@@ -56,7 +56,12 @@ def load_thresholds(root: Path) -> Thresholds:
         return Thresholds()
     with pyproject.open("rb") as handle:
         config = tomllib.load(handle)
-    values = dict(config.get("tool", {}).get("amn", {}))\n    dynamic = root / "config" / "amn.json"\n    if dynamic.is_file():\n        runtime = json.loads(dynamic.read_text(encoding="utf-8"))\n        values.update(runtime.get("thresholds", {}))\n    return Thresholds.from_mapping(values)
+    values = dict(config.get("tool", {}).get("amn", {}))
+    dynamic = root / "config" / "amn.json"
+    if dynamic.is_file():
+        runtime = json.loads(dynamic.read_text(encoding="utf-8"))
+        values.update(runtime.get("thresholds", {}))
+    return Thresholds.from_mapping(values)
 
 
 def _sha256(path: Path) -> str:
@@ -131,6 +136,14 @@ def process_image(
         "height": verdict.height,
         "caption": caption,
     }
+    try:
+        sidecar_data = json.loads(source.with_suffix(".json").read_text(encoding="utf-8"))
+        for key in ("categories", "tags"):
+            values = sidecar_data.get(key, [])
+            if isinstance(values, list):
+                record[key] = [str(value) for value in values if isinstance(value, str)]
+    except (OSError, json.JSONDecodeError, AttributeError):
+        pass
     if engagement is not None:
         record["engagement_rate"] = round(engagement.rate, 6)
         record["metrics"] = {"views": engagement.views, "likes": engagement.likes,
@@ -168,7 +181,14 @@ def run(root: Path, *, thresholds: Thresholds | None = None,
         result.errors.append(f"inbox directory not found: {inbox}")
         return result
 
-    runtime_config = root / "config" / "amn.json"\n    max_distance = 5\n    if runtime_config.is_file():\n        max_distance = int(json.loads(runtime_config.read_text(encoding="utf-8")).get("thresholds", {}).get("max_distance", 5))\n    detector = DuplicateDetector(root / BUILD_DIR / "hashes.json", max_distance=max_distance)
+    runtime_config = root / "config" / "amn.json"
+    max_distance = 5
+    if runtime_config.is_file():
+        max_distance = int(
+            json.loads(runtime_config.read_text(encoding="utf-8"))
+            .get("thresholds", {}).get("max_distance", 5)
+        )
+    detector = DuplicateDetector(root / BUILD_DIR / "hashes.json", max_distance=max_distance)
     sources = sorted(p for p in inbox.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
     for source in sources:
         sidecar = source.with_suffix(".json")
@@ -202,7 +222,8 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--watermark", default="")
     run_parser.add_argument("--dry-run", action="store_true")
     pub = sub.add_parser("publish")
-    pub.add_argument("--platform", choices=["mock", "bluesky", "telegram"])\n    pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
+    pub.add_argument("--platform", choices=["mock", "bluesky", "telegram"])
+    pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
     pub.add_argument("--root", type=Path, default=Path.cwd())
     fetch = sub.add_parser("fetch")
     fetch.add_argument("--source", required=True, choices=["reddit"])
@@ -227,6 +248,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"successfully fetched {count} assets from r/{args.query}")
         return 0
     if args.command == "publish":
+        if args.routed:
+            from .distribution import publish_routed_manifest
+            totals = publish_routed_manifest(args.root)
+            print(f"routed publishing complete: {totals}")
+            return 0
+        if not args.platform:
+            print("error: --platform or --routed is required", file=sys.stderr)
+            return 2
         from .publish import BlueskyPublisher, MockPublisher, publish_manifest
         from .publishers.telegram import TelegramPublisher
         if args.platform == "mock":
