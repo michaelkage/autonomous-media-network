@@ -91,7 +91,15 @@ amn alerts check --root .
 
 The checker detects terminally failed queue jobs, repeated delivery failures (at least three failed attempts in 30 minutes), stalled TikTok operations, stalled Instagram containers, and Instagram outcomes requiring manual reconciliation. Incidents are persisted in `operator_alerts` inside `build/jobs.sqlite3`, deduplicated by stable incident identity, automatically marked resolved when the condition clears, and re-notified if the same incident reopens. Active incidents have a six-hour notification cooldown; failed notification attempts are retried no more than once every five minutes. Alert delivery is best-effort and never runs inside a publishing operation. Messages contain bounded operational identifiers and status only, not captions, tokens, raw provider errors, or source content.
 
-Run `amn alerts check` periodically with cron/systemd on the AMN host. The dashboard's Operator alerts section and `GET /api/alerts` expose sanitized active/resolved history. Telegram credentials are not read from the AMN JSON config.
+For unattended checks, add a durable alert schedule and keep the existing worker running:
+
+```bash
+amn jobs schedule add --id operator-alerts --kind alerts --every-seconds 300 --root .
+amn jobs schedule tick --root .
+amn jobs worker --root .
+```
+
+Invoke `amn jobs schedule tick --root .` periodically from cron/systemd (for example, once per minute). The alert job runs in the same durable queue as fetch, pipeline, and publish work. The dashboard's Operator alerts section and `GET /api/alerts` expose sanitized active/resolved history. Telegram credentials are not read from the AMN JSON config.
 
 GitHub Actions Telegram publishing is separately opt-in. Add repository secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, then set repository variable `AMN_TELEGRAM_PUBLISH=true`. The workflow maps those secrets into the publishing step explicitly and fails that step if publishing is enabled but either secret is missing. Keep this publishing chat distinct from `TELEGRAM_ALERT_CHAT_ID`.
 
