@@ -31,6 +31,28 @@ def test_telegram_exposes_provider_retry_after(tmp_path: Path) -> None:
     assert publisher.retry_after == 7
 
 
+def test_telegram_rejects_photo_over_bot_api_upload_limit(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    with image.open("wb") as handle:
+        handle.truncate(10 * 1024 * 1024 + 1)
+    publisher = TelegramPublisher("token", "@channel")
+    publisher.session.post = MagicMock()
+
+    assert publisher.publish(image, "caption") is False
+    publisher.session.post.assert_not_called()
+
+
+def test_telegram_uses_image_mime_type(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = TelegramPublisher("token", "@channel")
+    publisher.session.post = MagicMock(return_value=_response({"ok": True}))
+
+    assert publisher.publish(image, "caption") is True
+    uploaded = publisher.session.post.call_args.kwargs["files"]["photo"]
+    assert uploaded[2] == "image/jpeg"
+
+
 def test_instagram_runs_container_processing_and_publish_flow(tmp_path: Path) -> None:
     image = tmp_path / "photo.jpg"
     image.write_bytes(b"image")
