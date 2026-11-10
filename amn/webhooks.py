@@ -216,7 +216,9 @@ def create_webhook_app(
                 created_at=float(payload.get("create_time") or time.time()),
             )
         except sqlite3.Error as exc:
-            raise HTTPException(status_code=503, detail="webhook event could not be persisted") from exc
+            raise HTTPException(
+                status_code=503, detail="webhook event could not be persisted"
+            ) from exc
         return {"status": "accepted" if inserted else "duplicate"}
 
     return app
