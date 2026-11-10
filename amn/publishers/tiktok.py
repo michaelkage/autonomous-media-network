@@ -168,6 +168,11 @@ class TikTokPublisher(Publisher):
             return
         with closing(sqlite3.connect(self.rate_limit_db, timeout=30)) as db:
             db.execute("PRAGMA busy_timeout = 30000")
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS tiktok_publish_operations ("
+                "operation_key TEXT PRIMARY KEY, publish_id TEXT NOT NULL, "
+                "status TEXT NOT NULL, updated_at REAL NOT NULL)"
+            )
             db.execute("BEGIN IMMEDIATE")
             try:
                 db.execute(
