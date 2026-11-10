@@ -35,9 +35,9 @@ TELEGRAM_BOT_TOKEN="..." TELEGRAM_CHAT_ID="@your_channel" \
   amn publish --platform telegram --root .
 
 # Reddit: registered OAuth access token, submit scope, and descriptive User-Agent
-REDDIT_USER_ACCESS_TOKEN="..." REDDIT_SUBREDDIT="earthporn" \\
-AMN_REDDIT_USER_AGENT="linux:amn:v0.2.0 (by /u/your_username)" \\
-AMN_PUBLIC_MEDIA_URL="https://media.example.com/outbox" \\
+REDDIT_USER_ACCESS_TOKEN="..." REDDIT_SUBREDDIT="earthporn" \
+AMN_REDDIT_USER_AGENT="linux:amn:v0.2.0 (by /u/your_username)" \
+AMN_PUBLIC_MEDIA_URL="https://media.example.com/outbox" \
   amn publish --platform reddit --root .
 
 # X: OAuth 2.0 user access token with tweet.write, media.write, and users.read
