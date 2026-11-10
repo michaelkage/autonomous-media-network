@@ -12,3 +12,9 @@ outbox/
 rejected/
 manifest*.json
 !inbox/.gitkeep
+
+# Local credentials and operator configuration
+.env
+.env.*
+!.env.example
+config/amn.json
