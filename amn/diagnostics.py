@@ -28,7 +28,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
     config_path = root / "config" / "amn.json"
     try:
         config = validate_config(load_config(config_path))
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         return [_check("configuration", "validation", False, str(exc))]
 
     results: list[dict[str, Any]] = []
@@ -126,7 +126,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                 bluesky = Client()
                 bluesky.login(handle, password)
                 results.append(_check(target["id"], "account", True, "Bluesky login accepted"))
-            except (ImportError, Exception):
+            except Exception:
                 results.append(_check(target["id"], "account", False, "Bluesky login failed; verify optional dependency and app password"))
 
         if platform in {"instagram", "tiktok"}:
