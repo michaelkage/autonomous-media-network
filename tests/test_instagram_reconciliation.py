@@ -50,6 +50,12 @@ def test_instagram_reconciliation_lists_only_ambiguous_operations(tmp_path: Path
 
 def test_instagram_resolution_published_is_atomic_and_audited(tmp_path: Path) -> None:
     database = _database(tmp_path)
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "UPDATE instagram_publish_operations SET delivery_id = ? "
+            "WHERE operation_key = ?",
+            ("original-manifest-delivery", "ambiguous-a"),
+        )
 
     result = resolve_instagram_operation(
         database,
@@ -81,6 +87,7 @@ def test_instagram_resolution_published_is_atomic_and_audited(tmp_path: Path) ->
     assert snapshot["instagram_operations"]["reconciliation_required"] == 1
     assert snapshot["counts"]["manual_reconciliation_published"] == 1
     assert snapshot["recent"][0]["event_type"] == "manual_reconciliation_published"
+    assert snapshot["recent"][0]["delivery_id"] == "original-manifest-delivery"
     audit = snapshot["instagram_operations"]["resolution_history"]
     assert audit[0]["operation_key"] == "ambiguous-a"
 
