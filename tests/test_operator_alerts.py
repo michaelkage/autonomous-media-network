@@ -6,6 +6,7 @@ from pathlib import Path
 from amn.delivery_events import record_delivery_event
 from amn.jobs import JobQueue
 from amn.operator_alerts import check_operator_alerts, operator_alert_snapshot
+from amn.pipeline import main
 
 
 def test_failed_job_alert_is_sent_once_then_resolved(tmp_path: Path, monkeypatch) -> None:
@@ -136,3 +137,26 @@ def test_telegram_notification_failure_is_non_fatal_and_sanitized(
     assert alert["last_error"] == "notification failed (RuntimeError)"
     assert "secret-value" not in str(alert)
     assert "do not expose this error" not in str(alert)
+
+
+
+def test_alerts_cli_uses_private_alert_chat_not_publishing_chat(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    queue = JobQueue(database)
+    job_id = queue.enqueue("publish", max_attempts=1)
+    assert queue.claim("worker") is not None
+    assert queue.fail(job_id, "worker", "provider failure", retry_delay=0)
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "@public-channel")
+    monkeypatch.setenv("TELEGRAM_ALERT_CHAT_ID", "@private-ops")
+    destinations: list[str] = []
+    monkeypatch.setattr(
+        "amn.operator_alerts._send_telegram",
+        lambda token, chat, message, timeout: destinations.append(chat),
+    )
+
+    assert main(["alerts", "check", "--root", str(tmp_path)]) == 0
+    assert destinations == ["@private-ops"]
