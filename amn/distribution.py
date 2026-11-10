@@ -71,12 +71,13 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         ):
             raise ValueError("storage.region must be a non-empty string")
         for env_key in (
-            "endpoint_url_env", "access_key_env", "secret_key_env", "session_token_env"
+            "endpoint_url_env",
+            "access_key_env",
+            "secret_key_env",
+            "session_token_env",
         ):
             value = storage.get(env_key)
-            if value is not None and (
-                not isinstance(value, str) or not value.isidentifier()
-            ):
+            if value is not None and (not isinstance(value, str) or not value.isidentifier()):
                 raise ValueError(f"storage.{env_key} must be an environment variable name")
 
     targets = data.get("targets", [])
