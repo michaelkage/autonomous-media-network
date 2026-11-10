@@ -285,7 +285,6 @@ def test_tiktok_operation_table_migrates_legacy_schema(tmp_path: Path) -> None:
     assert {"delivery_id", "output"} <= columns
 
 
-
 def test_webhook_receipt_table_migrates_legacy_schema(tmp_path: Path) -> None:
     database = tmp_path / "build" / "jobs.sqlite3"
     database.parent.mkdir()
