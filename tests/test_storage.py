@@ -93,7 +93,7 @@ def test_s3_config_validation_rejects_unknown_fields() -> None:
         )
 
 
-def test_routed_instagram_publishing_uploads_to_configured_storage(tmp_path: Path, monkeypatch) -> None:
+def test_routed_ig_uses_s3_storage(tmp_path: Path, monkeypatch) -> None:
     import json
 
     from amn.distribution import publish_routed_manifest
