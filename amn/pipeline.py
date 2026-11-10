@@ -212,6 +212,7 @@ def _load_checkpoint(path: Path) -> list[dict[str, Any]]:
     for entry in payload:
         if (
             not isinstance(entry, dict)
+            or not isinstance(entry.get("source_name"), str)
             or not isinstance(entry.get("source_sha256"), str)
             or entry.get("outcome") not in {"passed", "rejected", "error"}
         ):
@@ -254,7 +255,9 @@ def run(
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         result.errors.append(f"pipeline checkpoint is invalid or unreadable: {exc}")
         return result
-    completed = {entry["source_sha256"]: entry for entry in checkpoint}
+    completed = {
+        (entry["source_name"], entry["source_sha256"]): entry for entry in checkpoint
+    }
     for entry in checkpoint:
         _restore_checkpoint_entry(result, entry)
     runtime_config = root / "config" / "amn.json"
@@ -274,7 +277,8 @@ def run(
     for source in sources:
         sidecar = source.with_suffix(".json")
         source_digest = _sha256(source)
-        previous = completed.get(source_digest)
+        source_key = (source.name, source_digest)
+        previous = completed.get(source_key)
         if previous is not None:
             if previous["outcome"] == "passed":
                 source.unlink(missing_ok=True)
@@ -288,6 +292,7 @@ def run(
             )
             if verdict.passed:
                 entry = {
+                    "source_name": source.name,
                     "source_sha256": source_digest,
                     "outcome": "passed",
                     "record": record,
@@ -299,6 +304,7 @@ def run(
                     "reasons": list(verdict.reasons),
                 }
                 entry = {
+                    "source_name": source.name,
                     "source_sha256": source_digest,
                     "outcome": "rejected",
                     "record": rejected_record,
@@ -307,6 +313,7 @@ def run(
         except (OSError, ValueError) as exc:
             error = f"{source.name}: {exc}"
             entry = {
+                "source_name": source.name,
                 "source_sha256": source_digest,
                 "outcome": "error",
                 "record": error,
@@ -314,7 +321,7 @@ def run(
             result.errors.append(error)
         if not dry_run:
             checkpoint.append(entry)
-            completed[source_digest] = entry
+            completed[source_key] = entry
             _save_checkpoint(checkpoint_path, checkpoint)
             if entry["outcome"] == "passed":
                 source.unlink(missing_ok=True)
