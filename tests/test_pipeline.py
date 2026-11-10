@@ -247,9 +247,16 @@ def test_reddit_sidecar_has_no_views_field(project: Path):
         mock_response.raise_for_status.return_value = None
         mock_session.get.return_value = mock_response
 
-        fetcher = RedditFetcher("test-agent")
+        fetcher = RedditFetcher("test-agent", access_token="reddit-token")
         count = fetcher.fetch("test", inbox_dir=project / "inbox")
 
+        assert mock_session.headers.update.call_args.args[0] == {
+            "User-Agent": "test-agent",
+            "Authorization": "Bearer reddit-token",
+        }
+        assert mock_session.get.call_args_list[0].args[0] == (
+            "https://oauth.reddit.com/r/test/hot"
+        )
         assert count == 1
         metrics = json.loads((project / "inbox" / "t3_abc.json").read_text(encoding="utf-8"))
         assert "views" not in metrics, "Reddit doesn't give views; fabricating them fakes the gate"
@@ -353,3 +360,17 @@ def test_corrupt_pipeline_checkpoint_fails_closed(project, add_asset):
     assert result.passed == []
     assert result.errors and "checkpoint is invalid" in result.errors[0]
     assert source.is_file()
+
+
+def test_reddit_fetch_cli_requires_oauth_credentials(tmp_path: Path, monkeypatch, capsys) -> None:
+    from amn.pipeline import main
+
+    monkeypatch.delenv("REDDIT_USER_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("AMN_REDDIT_USER_AGENT", raising=False)
+
+    result = main(
+        ["fetch", "--source", "reddit", "--query", "earthporn", "--root", str(tmp_path)]
+    )
+
+    assert result == 1
+    assert "REDDIT_USER_ACCESS_TOKEN and AMN_REDDIT_USER_AGENT are required" in capsys.readouterr().err
