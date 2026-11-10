@@ -69,8 +69,16 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         )
 
     allowed_fields = {
-        "id", "platform", "enabled", "token_env", "handle_env", "password_env",
-        "chat_id", "instagram_user_id", "public_base_url", "privacy_level",
+        "id",
+        "platform",
+        "enabled",
+        "token_env",
+        "handle_env",
+        "password_env",
+        "chat_id",
+        "instagram_user_id",
+        "public_base_url",
+        "privacy_level",
         "direct_post_enabled",
     }
     supported_platforms = {"telegram", "bluesky", "instagram", "tiktok"}
@@ -81,9 +89,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         if set(target) - allowed_fields:
             raise ValueError(f"unsupported target fields: {sorted(set(target) - allowed_fields)}")
         target_id, platform = target.get("id"), target.get("platform")
-        if not isinstance(target_id, str) or not re.fullmatch(
-            r"[A-Za-z0-9_-]{1,64}", target_id
-        ):
+        if not isinstance(target_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", target_id):
             raise ValueError(
                 "target id must contain only letters, numbers, underscores, and hyphens"
             )
@@ -99,15 +105,11 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"target {target_id!r}: direct_post_enabled must be boolean")
         for env_key in ("token_env", "handle_env", "password_env"):
             value = target.get(env_key)
-            if value is not None and (
-                not isinstance(value, str) or not value.isidentifier()
-            ):
+            if value is not None and (not isinstance(value, str) or not value.isidentifier()):
                 raise ValueError(
                     f"target {target_id!r}: {env_key} must be an environment variable name"
                 )
-        for string_key in (
-            "chat_id", "instagram_user_id", "public_base_url", "privacy_level"
-        ):
+        for string_key in ("chat_id", "instagram_user_id", "public_base_url", "privacy_level"):
             value = target.get(string_key)
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"target {target_id!r}: {string_key} must be a non-empty string")
@@ -134,9 +136,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
                 )
 
     for route, target_ids in routes.items():
-        if not isinstance(route, str) or not re.fullmatch(
-            r"[A-Za-z0-9_-]{1,64}", route
-        ):
+        if not isinstance(route, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", route):
             raise ValueError(
                 "route names must contain only letters, numbers, underscores, and hyphens"
             )
@@ -145,6 +145,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         ):
             raise ValueError(f"route {route!r} references an unknown target")
     return data
+
 
 def save_config(path: Path, data: dict[str, Any]) -> None:
     validate_config(data)
