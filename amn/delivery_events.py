@@ -39,6 +39,7 @@ def record_delivery_event(
     attempt: int,
     will_retry: bool = False,
     retry_after_seconds: float | None = None,
+    provider_message_id: str | int | None = None,
 ) -> None:
     """Append one sanitized event. Captions, tokens, and provider payloads are never stored."""
     if not platform or not delivery_key or not output:
@@ -72,18 +73,22 @@ def record_delivery_event(
                 attempt INTEGER NOT NULL,
                 will_retry INTEGER NOT NULL DEFAULT 0,
                 retry_after_seconds REAL,
-                created_at REAL NOT NULL
+                created_at REAL NOT NULL,
+                provider_message_id TEXT
             )
             """
         )
+        columns = {row[1] for row in db.execute("PRAGMA table_info(delivery_events)")}
+        if "provider_message_id" not in columns:
+            db.execute("ALTER TABLE delivery_events ADD COLUMN provider_message_id TEXT")
         db.execute("BEGIN IMMEDIATE")
         try:
             db.execute(
                 """
                 INSERT INTO delivery_events (
                     delivery_id, platform, output, event_type, attempt,
-                    will_retry, retry_after_seconds, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    will_retry, retry_after_seconds, created_at, provider_message_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     delivery_id,
@@ -94,6 +99,7 @@ def record_delivery_event(
                     int(will_retry),
                     retry_after_seconds,
                     time.time(),
+                    str(provider_message_id) if provider_message_id is not None else None,
                 ),
             )
             db.commit()
@@ -170,12 +176,13 @@ def delivery_event_snapshot(
                     "attempt": int(row["attempt"]),
                     "will_retry": bool(row["will_retry"]),
                     "retry_after_seconds": row["retry_after_seconds"],
+                    "provider_message_id": row["provider_message_id"] if "provider_message_id" in row.keys() else None,
                     "created_at": float(row["created_at"]),
                 }
                 for row in db.execute(
                     """
                     SELECT id, delivery_id, platform, output, event_type, attempt,
-                           will_retry, retry_after_seconds, created_at
+                           will_retry, retry_after_seconds, created_at, provider_message_id
                     FROM delivery_events ORDER BY id DESC LIMIT ?
                     """,
                     (limit,),
