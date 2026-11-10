@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from amn.dashboard import create_app
 from amn.jobs import JobQueue
 
-
 def test_dashboard_serves_ui_and_workspace_status(tmp_path: Path) -> None:
     for folder in ("inbox", "outbox", "rejected", "build"):
         (tmp_path / folder).mkdir()
@@ -22,7 +21,6 @@ def test_dashboard_serves_ui_and_workspace_status(tmp_path: Path) -> None:
     assert "Autonomous Media Network" in page.text
     assert status.json()["inbox"]["count"] == 1
 
-
 def test_dashboard_blocks_cross_origin_mutations(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
     response = client.put(
@@ -33,11 +31,9 @@ def test_dashboard_blocks_cross_origin_mutations(tmp_path: Path) -> None:
     assert response.status_code == 403
     assert not (tmp_path / "config" / "amn.json").exists()
 
-
 def test_dashboard_rejects_non_loopback_host(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path), base_url="http://attacker.example")
     assert client.get("/api/status").status_code == 403
-
 
 def test_dashboard_saves_only_valid_configuration(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
@@ -63,7 +59,6 @@ def test_dashboard_saves_only_valid_configuration(tmp_path: Path) -> None:
     assert valid.status_code == 200
     saved = json.loads((tmp_path / "config" / "amn.json").read_text(encoding="utf-8"))
     assert saved["sources"]["reddit"] == ["earthporn"]
-
 
 def test_dashboard_recursively_redacts_secret_values(tmp_path: Path) -> None:
     config_dir = tmp_path / "config"
@@ -92,8 +87,6 @@ def test_dashboard_recursively_redacts_secret_values(tmp_path: Path) -> None:
     assert "token" not in config["sources"]
     assert "token" not in config["targets"][0]
     assert config["targets"][0]["token_env"] == "TELEGRAM_BOT_TOKEN"
-
-
 
 def test_dashboard_exposes_durable_job_counts_and_recent_jobs(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "build" / "jobs.sqlite3")
