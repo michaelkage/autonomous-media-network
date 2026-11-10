@@ -35,7 +35,7 @@ TELEGRAM_BOT_TOKEN="..." TELEGRAM_CHAT_ID="@your_channel" \
   amn publish --platform telegram --root .
 
 # Facebook Page: Page access token with pages_manage_posts + page ID
-FACEBOOK_PAGE_ACCESS_TOKEN="..." FACEBOOK_PAGE_ID="..." \\
+FACEBOOK_PAGE_ACCESS_TOKEN="..." FACEBOOK_PAGE_ID="..." \
   amn publish --platform facebook --root .
 
 # Instagram: professional account + public HTTPS media hosting required
