@@ -23,12 +23,8 @@ def test_failed_job_alert_is_sent_once_then_resolved(tmp_path: Path, monkeypatch
 
     monkeypatch.setattr("amn.operator_alerts._send_telegram", fake_send)
 
-    first = check_operator_alerts(
-        database, bot_token="test-token", chat_id="@ops", now=1000
-    )
-    second = check_operator_alerts(
-        database, bot_token="test-token", chat_id="@ops", now=1100
-    )
+    first = check_operator_alerts(database, bot_token="test-token", chat_id="@ops", now=1000)
+    second = check_operator_alerts(database, bot_token="test-token", chat_id="@ops", now=1100)
 
     assert first["active"] == 1
     assert first["sent"] == 1
@@ -40,9 +36,7 @@ def test_failed_job_alert_is_sent_once_then_resolved(tmp_path: Path, monkeypatch
     with sqlite3.connect(database) as db:
         db.execute("UPDATE jobs SET status = 'succeeded' WHERE id = ?", (job_id,))
 
-    resolved = check_operator_alerts(
-        database, bot_token="test-token", chat_id="@ops", now=1200
-    )
+    resolved = check_operator_alerts(database, bot_token="test-token", chat_id="@ops", now=1200)
     assert resolved["active"] == 0
     assert resolved["resolved"] == 1
     assert operator_alert_snapshot(database)["counts"]["resolved"] == 1
@@ -65,9 +59,7 @@ def test_repeated_delivery_failures_create_one_alert(tmp_path: Path, monkeypatch
         lambda token, chat, message, timeout: calls.append(message),
     )
 
-    result = check_operator_alerts(
-        database, bot_token="token", chat_id="@ops", now=2000
-    )
+    result = check_operator_alerts(database, bot_token="token", chat_id="@ops", now=2000)
 
     assert result["active"] == 1
     assert result["sent"] == 1
@@ -128,9 +120,7 @@ def test_telegram_notification_failure_is_non_fatal_and_sanitized(
         raise RuntimeError("request failed with token=secret-value")
 
     monkeypatch.setattr("amn.operator_alerts._send_telegram", fail_send)
-    result = check_operator_alerts(
-        database, bot_token="secret-value", chat_id="@ops", now=3000
-    )
+    result = check_operator_alerts(database, bot_token="secret-value", chat_id="@ops", now=3000)
 
     assert result["failed"] == 1
     alert = operator_alert_snapshot(database)["recent"][0]
