@@ -358,9 +358,7 @@ def test_instagram_records_structured_provider_error_without_leaking_token(
         },
         status_code=400,
     )
-    response.raise_for_status.side_effect = requests.HTTPError(
-        "request failed", response=response
-    )
+    response.raise_for_status.side_effect = requests.HTTPError("request failed", response=response)
     publisher.session.post = MagicMock(return_value=response)
 
     assert publisher.publish(image, "caption") is False
