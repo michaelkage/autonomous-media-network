@@ -175,6 +175,26 @@ def test_delivery_journal_records_success_without_caption_or_secrets(
     assert "Authorization" not in serialized
 
 
+def test_telegram_provider_message_id_is_recorded_in_delivery_journal(
+    manifest: Path, tmp_path: Path
+) -> None:
+    from amn.delivery_events import delivery_event_snapshot
+
+    class TelegramLike(Publisher):
+        last_message_id = 481
+
+        def publish(self, image_path: Path, caption: str) -> bool:
+            return True
+
+    assert publish_manifest(manifest, TelegramLike(), platform="telegram") == 2
+    snapshot = delivery_event_snapshot(tmp_path / "build" / "jobs.sqlite3")
+    accepted = [
+        event for event in snapshot["recent"]
+        if event["event_type"] == "provider_accepted"
+    ]
+    assert {event["provider_message_id"] for event in accepted} == {"481"}
+
+
 def test_delivery_journal_records_retry_and_terminal_failure(
     manifest: Path, tmp_path: Path, monkeypatch
 ) -> None:
