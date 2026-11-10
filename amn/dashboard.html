@@ -39,7 +39,7 @@ async function load() {
   const statusResponse = await fetch("/api/status");
   document.querySelector("#status").textContent =
     JSON.stringify(await statusResponse.json(), null, 2);
-  const deliveryResponse = await fetch("/api/deliveries?limit=50");
+  const deliveryResponse = await fetch("/api/deliveries?limit=50&stale_after_seconds=900");
   const deliveryData = await deliveryResponse.json();
   document.querySelector("#deliveryHealth").textContent = JSON.stringify({
     webhooks: deliveryData.webhooks,
