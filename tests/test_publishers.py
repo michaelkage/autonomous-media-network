@@ -43,6 +43,29 @@ def test_telegram_rejects_photo_over_bot_api_upload_limit(tmp_path: Path) -> Non
     publisher.session.post.assert_not_called()
 
 
+def test_telegram_persists_returned_message_id(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = TelegramPublisher("token", "@channel")
+    publisher.session.post = MagicMock(
+        return_value=_response({"ok": True, "result": {"message_id": 481}})
+    )
+
+    assert publisher.publish(image, "caption") is True
+    assert publisher.last_message_id == 481
+
+
+def test_telegram_clears_message_id_before_failed_send(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = TelegramPublisher("token", "@channel")
+    publisher.last_message_id = 123
+    publisher.session.post = MagicMock(return_value=_response({"ok": False, "description": "bad"}))
+
+    assert publisher.publish(image, "caption") is False
+    assert publisher.last_message_id is None
+
+
 def test_telegram_uses_image_mime_type(tmp_path: Path) -> None:
     image = tmp_path / "photo.jpg"
     image.write_bytes(b"image")
