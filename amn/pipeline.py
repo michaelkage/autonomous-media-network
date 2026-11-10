@@ -142,6 +142,9 @@ def process_image(
             values = sidecar_data.get(key, [])
             if isinstance(values, list):
                 record[key] = [str(value) for value in values if isinstance(value, str)]
+        for key in ("source", "subreddit", "source_id", "permalink"):
+            if isinstance(sidecar_data.get(key), str):
+                record[key] = sidecar_data[key]
     except (OSError, json.JSONDecodeError, AttributeError):
         pass
     if engagement is not None:
@@ -227,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     pub.add_argument("--root", type=Path, default=Path.cwd())
     fetch = sub.add_parser("fetch")
     fetch.add_argument("--source", required=True, choices=["reddit"])
-    fetch.add_argument("--query", default="earthporn")
+    fetch.add_argument("--query", help="one subreddit; omit to fetch configured Reddit sources")
     fetch.add_argument("--limit", type=int, default=10)
     fetch.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
@@ -244,8 +247,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fetch":
         from .fetchers.reddit import RedditFetcher
         fetcher = RedditFetcher(os.environ.get("REDDIT_USER_AGENT", "amn-fetcher-v1"))
-        count = fetcher.fetch(args.query, args.limit, args.root / INBOX_DIR)
-        print(f"successfully fetched {count} assets from r/{args.query}")
+        if args.query:
+            sources = [args.query]
+        else:
+            from .distribution import load_config
+            sources = load_config(args.root / "config" / "amn.json").get("sources", {}).get("reddit", [])
+        if not sources:
+            print("error: no Reddit sources configured; pass --query or set sources.reddit", file=sys.stderr)
+            return 2
+        total = sum(fetcher.fetch(source, args.limit, args.root / INBOX_DIR) for source in sources)
+        print(f"successfully fetched {total} assets from {len(sources)} configured subreddit(s)")
         return 0
     if args.command == "publish":
         if args.routed:
