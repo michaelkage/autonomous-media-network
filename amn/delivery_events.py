@@ -231,9 +231,57 @@ def delivery_event_snapshot(
                 stalled, key=lambda item: item["age_seconds"], reverse=True
             )[:25]
 
+        instagram_table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'instagram_publish_operations'"
+        ).fetchone()
+        instagram = {
+            "pending": 0,
+            "stalled": 0,
+            "complete": 0,
+            "failed": 0,
+            "reconciliation_required": 0,
+            "stale_after_seconds": stale_after_seconds,
+            "recent_stalled": [],
+            "recent_ambiguous": [],
+        }
+        if instagram_table:
+            rows = db.execute(
+                "SELECT container_id, status, updated_at, output "
+                "FROM instagram_publish_operations"
+            ).fetchall()
+            stalled_rows: list[dict[str, Any]] = []
+            ambiguous_rows: list[dict[str, Any]] = []
+            for row in rows:
+                status = str(row["status"])
+                age = max(0.0, now - float(row["updated_at"]))
+                item = {
+                    "container_id": str(row["container_id"]),
+                    "output": str(row["output"]) if row["output"] else None,
+                    "age_seconds": int(age),
+                }
+                if status in {"processing", "ready"}:
+                    if age >= stale_after_seconds:
+                        instagram["stalled"] += 1
+                        stalled_rows.append(item)
+                    else:
+                        instagram["pending"] += 1
+                elif status == "publishing":
+                    instagram["reconciliation_required"] += 1
+                    ambiguous_rows.append(item)
+                elif status in {"complete", "failed"}:
+                    instagram[status] += 1
+            instagram["recent_stalled"] = sorted(
+                stalled_rows, key=lambda item: item["age_seconds"], reverse=True
+            )[:25]
+            instagram["recent_ambiguous"] = sorted(
+                ambiguous_rows, key=lambda item: item["age_seconds"], reverse=True
+            )[:25]
+
     return {
         "counts": counts,
         "recent": recent,
         "webhooks": webhooks,
         "tiktok_operations": operations,
+        "instagram_operations": instagram,
     }
