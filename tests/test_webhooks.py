@@ -317,6 +317,7 @@ def test_webhook_receipt_table_migrates_legacy_schema(tmp_path: Path) -> None:
     assert "event_created_at" in columns
     assert event_time is not None
 
+
 def test_tiktok_pending_operation_becomes_stalled_only_in_snapshot(tmp_path: Path) -> None:
     database = tmp_path / "build" / "jobs.sqlite3"
     publisher = TikTokPublisher(
