@@ -45,18 +45,26 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("each target requires id and platform")
         target_id = str(target["id"])
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", target_id):
-            raise ValueError("target id must contain only letters, numbers, underscores, and hyphens")
+            raise ValueError(
+                "target id must contain only letters, numbers, underscores, and hyphens"
+            )
         if target_id in ids:
             raise ValueError(f"duplicate target id: {target_id}")
         ids.add(target_id)
         for field in target:
             normalized = field.lower()
-            if normalized in {"token", "access_token", "refresh_token", "password", "secret", "client_secret"}:
-                raise ValueError(f"store credentials in environment variables, not config ({field})")
+            if normalized in {
+                "token", "access_token", "refresh_token", "password", "secret", "client_secret"
+            }:
+                raise ValueError(
+                    f"store credentials in environment variables, not config ({field})"
+                )
         if target.get("token_env") and not str(target["token_env"]).isidentifier():
             raise ValueError("token_env must be an environment variable name")
     for route, target_ids in data.get("routes", {}).items():
-        if not isinstance(target_ids, list) or any(target_id not in ids for target_id in target_ids):
+        if not isinstance(target_ids, list) or any(
+            target_id not in ids for target_id in target_ids
+        ):
             raise ValueError(f"route {route!r} references an unknown target")
     return data
 
@@ -127,7 +135,9 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
             user_id = target.get("instagram_user_id")
             media_url = target.get("public_base_url")
             if not token or not user_id or not media_url:
-                print(f"skipping {target['id']}: Instagram token, user ID or public_base_url missing")
+                print(
+                    f"skipping {target['id']}: Instagram token, user ID or public_base_url missing"
+                )
                 continue
             publisher = InstagramPublisher(token, str(user_id), str(media_url))
         elif platform == "tiktok":
@@ -135,7 +145,9 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
             media_url = target.get("public_base_url")
             privacy = target.get("privacy_level")
             if not token or not media_url or not privacy:
-                print(f"skipping {target['id']}: TikTok token, public_base_url or privacy_level missing")
+                print(
+                    f"skipping {target['id']}: TikTok token, public_base_url or privacy_level missing"
+                )
                 continue
             publisher = TikTokPublisher(
                 token, str(media_url), str(privacy),
