@@ -120,6 +120,29 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                     )
                 )
 
+        elif platform == "x":
+            token = os.environ.get(target.get("token_env", "X_USER_ACCESS_TOKEN"))
+            if not token:
+                results.append(
+                    _check(target_id, "credentials", False, "X user access token missing")
+                )
+                continue
+            try:
+                response = client.get(
+                    "https://api.x.com/2/users/me",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=15,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload.get("data"), dict) or not payload["data"].get("id"):
+                    raise ValueError("X user lookup failed")
+                results.append(_check(target_id, "account", True, "X user token accepted"))
+            except (requests.RequestException, ValueError, TypeError, AttributeError):
+                results.append(
+                    _check(target_id, "account", False, "X user token or users.read scope rejected")
+                )
+
         elif platform == "facebook":
             token = os.environ.get(target.get("token_env", "FACEBOOK_PAGE_ACCESS_TOKEN"))
             page_id = target.get("facebook_page_id")
