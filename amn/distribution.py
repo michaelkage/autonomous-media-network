@@ -266,7 +266,7 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
                     f"skipping {target['id']}: Instagram token, user ID or public_base_url missing"
                 )
                 continue
-            publisher = InstagramPublisher(token, str(user_id), str(media_url))
+            publisher = InstagramPublisher(\n                token,\n                str(user_id),\n                str(media_url),\n                operation_db=root / "build" / "jobs.sqlite3",\n            )
         elif platform == "tiktok":
             if not target.get("direct_post_enabled", False):
                 print(f"skipping {target['id']}: TikTok direct posting is not enabled")
