@@ -30,10 +30,15 @@ def test_diagnostics_checks_instagram_account_and_public_media(tmp_path: Path, m
     _workspace(
         tmp_path,
         {
-            "targets": [{
-                "id": "ig", "platform": "instagram", "enabled": True,
-                "instagram_user_id": "12345", "public_base_url": "https://media.example.com/outbox",
-            }],
+            "targets": [
+                {
+                    "id": "ig",
+                    "platform": "instagram",
+                    "enabled": True,
+                    "instagram_user_id": "12345",
+                    "public_base_url": "https://media.example.com/outbox",
+                }
+            ],
             "routes": {},
         },
     )
@@ -56,20 +61,27 @@ def test_diagnostics_checks_tiktok_scope_and_account_privacy(tmp_path: Path, mon
     _workspace(
         tmp_path,
         {
-            "targets": [{
-                "id": "tt", "platform": "tiktok", "enabled": True,
-                "public_base_url": "https://media.example.com/outbox",
-                "privacy_level": "SELF_ONLY", "direct_post_enabled": True,
-            }],
+            "targets": [
+                {
+                    "id": "tt",
+                    "platform": "tiktok",
+                    "enabled": True,
+                    "public_base_url": "https://media.example.com/outbox",
+                    "privacy_level": "SELF_ONLY",
+                    "direct_post_enabled": True,
+                }
+            ],
             "routes": {},
         },
     )
     monkeypatch.setenv("TIKTOK_ACCESS_TOKEN", "secret")
     session = MagicMock()
-    session.post.return_value = _response({
-        "data": {"privacy_level_options": ["SELF_ONLY"]},
-        "error": {"code": "ok"},
-    })
+    session.post.return_value = _response(
+        {
+            "data": {"privacy_level_options": ["SELF_ONLY"]},
+            "error": {"code": "ok"},
+        }
+    )
     session.get.return_value = _response({"ok": True})
 
     results = run_diagnostics(tmp_path, session=session)
@@ -83,9 +95,14 @@ def test_diagnostics_reports_missing_telegram_credentials(tmp_path: Path, monkey
     _workspace(
         tmp_path,
         {
-            "targets": [{
-                "id": "tg", "platform": "telegram", "enabled": True, "chat_id": "@channel",
-            }],
+            "targets": [
+                {
+                    "id": "tg",
+                    "platform": "telegram",
+                    "enabled": True,
+                    "chat_id": "@channel",
+                }
+            ],
             "routes": {},
         },
     )
@@ -93,10 +110,14 @@ def test_diagnostics_reports_missing_telegram_credentials(tmp_path: Path, monkey
 
     results = run_diagnostics(tmp_path, session=MagicMock())
 
-    assert results == [{
-        "target": "tg", "check": "credentials", "ok": False,
-        "detail": "bot token or chat ID missing",
-    }]
+    assert results == [
+        {
+            "target": "tg",
+            "check": "credentials",
+            "ok": False,
+            "detail": "bot token or chat ID missing",
+        }
+    ]
 
 
 def test_diagnostics_skips_disabled_targets_without_network_calls(tmp_path: Path) -> None:
