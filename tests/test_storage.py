@@ -1,0 +1,95 @@
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from amn.publish import Publisher
+from amn.storage import S3MediaStorage, StorageBackedPublisher
+
+
+class RecordingPublisher(Publisher):
+    def __init__(self) -> None:
+        self.calls: list[tuple[Path, str]] = []
+        self.retry_after = 12.0
+
+    def publish(self, image_path: Path, caption: str) -> bool:
+        self.calls.append((image_path, caption))
+        return True
+
+
+def test_s3_storage_uploads_to_public_url_prefix_and_caches(tmp_path: Path) -> None:
+    image = tmp_path / "asset one.jpg"
+    image.write_bytes(b"jpeg")
+    client = MagicMock()
+    storage = S3MediaStorage("amn-media", client=client)
+
+    key = storage.upload(image, "https://cdn.example.com/outbox")
+
+    assert key == "outbox/asset one.jpg"
+    client.upload_file.assert_called_once_with(
+        str(image.resolve()),
+        "amn-media",
+        "outbox/asset one.jpg",
+        ExtraArgs={
+            "ContentType": "image/jpeg",
+            "CacheControl": "public, max-age=31536000, immutable",
+        },
+    )
+    assert storage.upload(image, "https://cdn.example.com/outbox") == key
+    client.upload_file.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://cdn.example.com/outbox",
+        "https://cdn.example.com/outbox?token=secret",
+        "https://cdn.example.com/outbox#fragment",
+        "https://cdn.example.com/../private",
+    ],
+)
+def test_s3_storage_rejects_unsafe_public_urls(tmp_path: Path, url: str) -> None:
+    image = tmp_path / "asset.jpg"
+    image.write_bytes(b"jpeg")
+    storage = S3MediaStorage("amn-media", client=MagicMock())
+
+    with pytest.raises(ValueError):
+        storage.upload(image, url)
+
+
+def test_s3_storage_rejects_missing_files(tmp_path: Path) -> None:
+    storage = S3MediaStorage("amn-media", client=MagicMock())
+
+    with pytest.raises(FileNotFoundError):
+        storage.upload(tmp_path / "missing.jpg", "https://cdn.example.com/outbox")
+
+
+def test_storage_backed_publisher_uploads_before_remote_publish(tmp_path: Path) -> None:
+    image = tmp_path / "asset.jpg"
+    image.write_bytes(b"jpeg")
+    storage = MagicMock()
+    publisher = RecordingPublisher()
+    backed = StorageBackedPublisher(
+        publisher, storage, "https://cdn.example.com/outbox"
+    )
+
+    assert backed.publish(image, "caption") is True
+
+    storage.upload.assert_called_once_with(image, "https://cdn.example.com/outbox")
+    assert publisher.calls == [(image, "caption")]
+    assert backed.retry_after == 12.0
+
+
+def test_s3_config_validation_rejects_unknown_fields() -> None:
+    from amn.distribution import validate_config
+
+    with pytest.raises(ValueError, match="unsupported storage fields"):
+        validate_config(
+            {
+                "storage": {"provider": "s3", "bucket": "amn-media", "secret": "no"},
+                "targets": [],
+                "routes": {},
+            }
+        )
