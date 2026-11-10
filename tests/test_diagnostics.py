@@ -207,3 +207,39 @@ def test_diagnostics_checks_x_user_token(tmp_path: Path, monkeypatch) -> None:
     ]
     assert session.get.call_args.args[0] == "https://api.x.com/2/users/me"
     assert session.get.call_args.kwargs["headers"]["Authorization"] == "Bearer user-token"
+
+
+def test_diagnostics_checks_reddit_identity_subreddit_and_public_media(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _workspace(
+        tmp_path,
+        {
+            "targets": [
+                {
+                    "id": "reddit",
+                    "platform": "reddit",
+                    "enabled": True,
+                    "subreddit": "earthporn",
+                    "public_base_url": "https://media.example.com/outbox",
+                }
+            ],
+            "routes": {},
+        },
+    )
+    monkeypatch.setenv("REDDIT_USER_ACCESS_TOKEN", "reddit-token")
+    monkeypatch.setenv("AMN_REDDIT_USER_AGENT", "linux:amn:v0.2.0 (by /u/amn_test)")
+    session = MagicMock()
+    session.get.side_effect = [
+        _response({"name": "amn_test"}),
+        _response({"data": {"display_name": "earthporn"}}),
+        _response({"ok": True}),
+    ]
+
+    results = run_diagnostics(tmp_path, session=session)
+
+    assert [item["check"] for item in results] == ["account", "public_media"]
+    assert all(item["ok"] for item in results)
+    assert session.get.call_args_list[0].args[0] == "https://oauth.reddit.com/api/v1/me"
+    assert session.get.call_args_list[0].kwargs["headers"]["Authorization"] == "Bearer reddit-token"
+    assert session.get.call_args_list[2].args[0] == "https://media.example.com/outbox/asset.jpg"
