@@ -13,6 +13,18 @@ from ..publish import Publisher, RateLimiter
 __all__ = ["TikTokPublisher"]
 
 
+def _truncate_utf16(value: str, max_units: int) -> str:
+    result: list[str] = []
+    used = 0
+    for character in value:
+        units = 2 if ord(character) > 0xFFFF else 1
+        if used + units > max_units:
+            break
+        result.append(character)
+        used += units
+    return "".join(result)
+
+
 class TikTokPublisher(Publisher):
     """Publish a photo post from a verified, public HTTPS URL.
 
@@ -77,12 +89,12 @@ class TikTokPublisher(Publisher):
                     f"configured privacy level {self.privacy_level!r} is not allowed: {options}"
                 )
 
-            description = caption.encode("utf-16-le")[:8000].decode("utf-16-le", errors="ignore")
+            description = _truncate_utf16(caption, 4000)
             initialized = self._request(
                 "post/publish/content/init",
                 {
                     "post_info": {
-                        "title": description[:90],
+                        "title": _truncate_utf16(description, 90),
                         "description": description,
                         "privacy_level": self.privacy_level,
                     },
