@@ -94,7 +94,7 @@ class S3MediaStorage:
             key,
             ExtraArgs={
                 "ContentType": content_type,
-                "CacheControl": "public, max-age=31536000, immutable",
+                "CacheControl": "public, max-age=300",
             },
         )
         self._uploaded[cache_key] = key
@@ -117,7 +117,12 @@ class StorageBackedPublisher(Publisher):
         self.retry_after = None
 
     def publish(self, image_path: Path, caption: str) -> bool:
-        self.storage.upload(image_path, self.public_base_url)
+        try:
+            self.storage.upload(image_path, self.public_base_url)
+        except Exception:
+            self.retry_after = None
+            print("S3 media upload failed; verify bucket access and public URL mapping")
+            return False
         result = self.publisher.publish(image_path, caption)
         self.retry_after = getattr(self.publisher, "retry_after", None)
         return result
