@@ -63,6 +63,17 @@ amn jobs worker --root .
 
 The queue lives at `build/jobs.sqlite3`. Claims are transactional across local worker processes, each running job has a renewable lease, and crashed workers' expired jobs are reclaimed. Failed jobs retry with bounded exponential backoff until their attempt budget is exhausted. Pipeline jobs are serialized so two workers do not process the same inbox concurrently. The media pipeline also keeps an atomic per-asset checkpoint at `build/pipeline-checkpoint.json`: completed outcomes are journaled before inbox assets are retired, interrupted runs resume from that journal, and an identical already-rendered output is reused instead of duplicated. Optional dedupe keys prevent duplicate enqueue requests:
 
+Recurring schedules are persisted in the same SQLite database. A scheduler tick enqueues each due schedule at most once, skips missed intervals rather than creating a catch-up storm, and can safely be invoked by cron or systemd timers:
+
+```bash
+amn jobs schedule add --id reddit-earthporn --kind fetch --query earthporn --every-seconds 3600 --root .
+amn jobs schedule list --root .
+amn jobs schedule tick --root .
+amn jobs schedule disable --id reddit-earthporn --root .
+```
+
+Run `amn jobs schedule tick` from cron (for example, every minute) and keep `amn jobs worker` running separately. The scheduler does not need to stay resident.
+
 ```bash
 amn jobs enqueue --kind fetch --query earthporn --dedupe-key "reddit:earthporn:2026-11-10" --root .
 ```
