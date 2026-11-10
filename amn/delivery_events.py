@@ -187,8 +187,7 @@ def delivery_event_snapshot(database: Path, limit: int = 100) -> dict[str, Any]:
         operations = empty["tiktok_operations"].copy()
         if operations_table:
             for row in db.execute(
-                "SELECT status, COUNT(*) AS count "
-                "FROM tiktok_publish_operations GROUP BY status"
+                "SELECT status, COUNT(*) AS count FROM tiktok_publish_operations GROUP BY status"
             ):
                 status = str(row["status"])
                 if status in operations:
