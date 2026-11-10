@@ -127,7 +127,6 @@ def test_dashboard_exposes_schedule_metadata_without_payload(tmp_path: Path) -> 
     assert "private_note" not in json.dumps(schedules)
 
 
-
 def test_dashboard_exposes_sanitized_delivery_event_history(tmp_path: Path) -> None:
     from amn.delivery_events import record_delivery_event
 
