@@ -89,6 +89,11 @@ def test_tiktok_webhook_verifies_signature_and_deduplicates(tmp_path: Path) -> N
         "provider_webhook_unavailable": 1,
     }
     assert events["recent"][0]["output"] == "publish_id:publish-123"
+    assert events["webhooks"]["received"] == 2
+    assert events["webhooks"]["last_received_at"] is not None
+    assert events["webhooks"]["latest_latency_seconds"] is not None
+    assert events["webhooks"]["latest_latency_seconds"] >= 0
+    assert events["tiktok_operations"] == {"pending": 0, "complete": 1, "failed": 0}
 
 
 def test_tiktok_failed_webhook_marks_operation_retryable(tmp_path: Path) -> None:
@@ -263,3 +268,34 @@ def test_tiktok_operation_table_migrates_legacy_schema(tmp_path: Path) -> None:
     with sqlite3.connect(database) as db:
         columns = {row[1] for row in db.execute("PRAGMA table_info(tiktok_publish_operations)")}
     assert {"delivery_id", "output"} <= columns
+
+
+
+def test_webhook_receipt_table_migrates_legacy_schema(tmp_path: Path) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    database.parent.mkdir()
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "CREATE TABLE provider_webhook_receipts ("
+            "receipt_key TEXT PRIMARY KEY, provider TEXT NOT NULL, "
+            "event_name TEXT NOT NULL, publish_id TEXT, received_at REAL NOT NULL)"
+        )
+
+    client = TestClient(
+        create_webhook_app(tmp_path, client_secret="test-secret"),
+        base_url="http://127.0.0.1",
+    )
+    body = _payload("post.publish.complete", "legacy-receipt-publish")
+    response = client.post(
+        "/webhooks/tiktok",
+        content=body,
+        headers=_signed_headers(body, "test-secret"),
+    )
+    assert response.status_code == 200
+    with sqlite3.connect(database) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(provider_webhook_receipts)")}
+        event_time = db.execute(
+            "SELECT event_created_at FROM provider_webhook_receipts"
+        ).fetchone()[0]
+    assert "event_created_at" in columns
+    assert event_time is not None
