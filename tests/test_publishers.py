@@ -288,8 +288,20 @@ def test_instagram_does_not_repeat_ambiguous_media_publish(tmp_path: Path) -> No
         operation_db=database,
         max_polls=1,
     )
-    restarted.session.get = MagicMock(return_value=_response({"status_code": "FINISHED"}))
+    restarted.session.get = MagicMock(return_value=_response({"status_code": "IN_PROGRESS"}))
     restarted.session.post = MagicMock()
 
     assert restarted.publish(image, "caption") is False
     restarted.session.post.assert_not_called()
+
+    final_retry = InstagramPublisher(
+        "ambiguous-token",
+        "123456",
+        "https://media.example.com/outbox",
+        operation_db=database,
+        max_polls=1,
+    )
+    final_retry.session.get = MagicMock(return_value=_response({"status_code": "FINISHED"}))
+    final_retry.session.post = MagicMock()
+    assert final_retry.publish(image, "caption") is False
+    final_retry.session.post.assert_not_called()
