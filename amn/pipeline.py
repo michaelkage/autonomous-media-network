@@ -414,9 +414,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.kind == "fetch":
                     payload.update({"query": args.query, "limit": args.limit})
                 try:
-                    queue.add_schedule(
-                        args.id, args.kind, payload, args.every_seconds
-                    )
+                    queue.add_schedule(args.id, args.kind, payload, args.every_seconds)
                 except ValueError as exc:
                     parser.error(str(exc))
                 print(f"created schedule {args.id} ({args.kind}, every {args.every_seconds:g}s)")
