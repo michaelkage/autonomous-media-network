@@ -146,6 +146,7 @@ def delivery_event_snapshot(
             "recent_stalled": [],
             "recent_ambiguous": [],
             "resolution_history": [],
+            "container_history": [],
         },
     }
     if not Path(database).is_file():
@@ -269,6 +270,7 @@ def delivery_event_snapshot(
             "recent_stalled": [],
             "recent_ambiguous": [],
             "resolution_history": [],
+            "container_history": [],
         }
         if instagram_table:
             columns = {
@@ -308,6 +310,34 @@ def delivery_event_snapshot(
             instagram["recent_ambiguous"] = sorted(
                 ambiguous_rows, key=lambda item: item["age_seconds"], reverse=True
             )[:25]
+
+        history_table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'instagram_publish_history'"
+        ).fetchone()
+        if history_table:
+            instagram["container_history"] = [
+                {
+                    "operation_key": str(row["operation_key"]),
+                    "container_id": str(row["container_id"]) if row["container_id"] else None,
+                    "event_kind": str(row["event_kind"]),
+                    "container_status": row["container_status"],
+                    "phase": row["phase"],
+                    "http_status": row["http_status"],
+                    "error_type": row["error_type"],
+                    "error_code": row["error_code"],
+                    "error_subcode": row["error_subcode"],
+                    "fbtrace_id": row["fbtrace_id"],
+                    "message": row["message"],
+                    "created_at": float(row["created_at"]),
+                }
+                for row in db.execute(
+                    "SELECT operation_key, container_id, event_kind, container_status, "
+                    "phase, http_status, error_type, error_code, error_subcode, "
+                    "fbtrace_id, message, created_at FROM instagram_publish_history "
+                    "ORDER BY id DESC LIMIT 50"
+                )
+            ]
 
         resolution_table = db.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' "
