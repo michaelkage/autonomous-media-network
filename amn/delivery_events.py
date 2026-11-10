@@ -166,9 +166,7 @@ def delivery_event_snapshot(
                     "SELECT event_type, COUNT(*) AS count FROM delivery_events GROUP BY event_type"
                 )
             }
-            event_columns = {
-                row[1] for row in db.execute("PRAGMA table_info(delivery_events)")
-            }
+            event_columns = {row[1] for row in db.execute("PRAGMA table_info(delivery_events)")}
             receipt_column = (
                 "provider_message_id" if "provider_message_id" in event_columns else "NULL"
             )
