@@ -8,7 +8,7 @@ import pytest
 from amn.publish import RateLimiter
 from amn.publishers.instagram import InstagramPublisher
 from amn.publishers.telegram import TelegramPublisher
-from amn.publishers.tiktok import TikTokPublisher
+from amn.publishers.tiktok import SQLiteTokenRateLimiter, TikTokPublisher
 
 
 def _response(payload: dict, status_code: int = 200) -> MagicMock:
@@ -148,3 +148,16 @@ def test_tiktok_rejects_unapproved_privacy_level(tmp_path: Path) -> None:
 
     with patch.object(RateLimiter, "wait", return_value=None):
         assert publisher.publish(image, "caption") is False
+
+
+def test_tiktok_sqlite_rate_limiter_coordinates_publisher_instances(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database = tmp_path / "jobs.sqlite3"
+    first = SQLiteTokenRateLimiter(database, "hashed-token", min_interval=10)
+    second = SQLiteTokenRateLimiter(database, "hashed-token", min_interval=10)
+    sleeps: list[float] = []
+    clock = iter([100.0, 100.0])
+    monkeypatch.setattr("amn.publishers.tiktok.time.time", lambda: next(clock))
+    monkeypatch.setattr("amn.publishers.tiktok.time.sleep", sleeps.append)
+    first.wait()
+    second.wait()
+    assert sleeps == [10.0]
