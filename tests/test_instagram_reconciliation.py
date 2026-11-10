@@ -208,8 +208,7 @@ def test_instagram_resolution_history_supports_later_retry_cycle(tmp_path: Path)
     )
     with sqlite3.connect(database) as db:
         db.execute(
-            "UPDATE instagram_publish_operations SET status = 'publishing' "
-            "WHERE operation_key = ?",
+            "UPDATE instagram_publish_operations SET status = 'publishing' WHERE operation_key = ?",
             ("ambiguous-a",),
         )
 
