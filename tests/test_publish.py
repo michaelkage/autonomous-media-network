@@ -188,10 +188,7 @@ def test_telegram_provider_message_id_is_recorded_in_delivery_journal(
 
     assert publish_manifest(manifest, TelegramLike(), platform="telegram") == 2
     snapshot = delivery_event_snapshot(tmp_path / "build" / "jobs.sqlite3")
-    accepted = [
-        event for event in snapshot["recent"]
-        if event["event_type"] == "provider_accepted"
-    ]
+    accepted = [event for event in snapshot["recent"] if event["event_type"] == "provider_accepted"]
     assert {event["provider_message_id"] for event in accepted} == {"481"}
 
 
