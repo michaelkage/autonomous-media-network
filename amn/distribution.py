@@ -146,7 +146,8 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
             privacy = target.get("privacy_level")
             if not token or not media_url or not privacy:
                 print(
-                    f"skipping {target['id']}: TikTok token, public_base_url or privacy_level missing"
+                    f"skipping {target['id']}: TikTok token, public_base_url "
+                    "or privacy_level missing"
                 )
                 continue
             publisher = TikTokPublisher(
