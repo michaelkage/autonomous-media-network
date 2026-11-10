@@ -88,7 +88,7 @@ class Captioner:
     def generate(image: Image.Image, metrics: dict[str, Any]) -> str:
         score = metrics.get("likes", 0)
         return (
-            "A highly engaged image selected by the AMN curation pipeline."
+            "A viral moment worth sharing."
             if score > 1000
-            else "A curated image selected by the AMN pipeline."
+            else "A beautiful moment captured in time."
         )
