@@ -348,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
     pub = sub.add_parser("publish")
     pub.add_argument(
         "--platform",
-        choices=["mock", "bluesky", "telegram", "facebook", "instagram", "tiktok"],
+        choices=["mock", "bluesky", "telegram", "facebook", "x", "instagram", "tiktok"],
     )
     pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
     pub.add_argument("--root", type=Path, default=Path.cwd())
@@ -712,6 +712,7 @@ def main(argv: list[str] | None = None) -> int:
         from .publishers.instagram import InstagramPublisher
         from .publishers.telegram import TelegramPublisher
         from .publishers.tiktok import TikTokPublisher
+        from .publishers.x import XPublisher
 
         if args.platform == "mock":
             publisher = MockPublisher()
@@ -729,6 +730,12 @@ def main(argv: list[str] | None = None) -> int:
                 print("error: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID required", file=sys.stderr)
                 return 1
             publisher = TelegramPublisher(token, chat_id)
+        elif args.platform == "x":
+            token = os.environ.get("X_USER_ACCESS_TOKEN")
+            if not token:
+                print("error: X_USER_ACCESS_TOKEN required", file=sys.stderr)
+                return 1
+            publisher = XPublisher(token)
         elif args.platform == "facebook":
             token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
             page_id = os.environ.get("FACEBOOK_PAGE_ID")
