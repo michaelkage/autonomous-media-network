@@ -79,7 +79,7 @@ def _read_engagement(source: Path) -> tuple[Engagement | None, str | None]:
     try:
         data = json.loads(sidecar.read_text(encoding="utf-8"))
         return Engagement.from_mapping(data), None
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
         return None, f"metrics manifest is invalid or unreadable: {exc}"
 
 
