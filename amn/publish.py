@@ -220,7 +220,19 @@ def _publish_manifest_unlocked(
                 event_type="attempt_started",
                 attempt=attempt_number,
             )
-            if publisher.publish(image_path, caption):
+            try:
+                accepted = publisher.publish(image_path, caption)
+            except Exception:
+                record_delivery_event(
+                    event_database,
+                    platform=platform_key,
+                    delivery_key=delivery_key,
+                    output=relative.as_posix(),
+                    event_type="attempt_failed",
+                    attempt=attempt_number,
+                )
+                raise
+            if accepted:
                 record_delivery_event(
                     event_database,
                     platform=platform_key,
