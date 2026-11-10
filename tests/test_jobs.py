@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -202,8 +203,7 @@ def test_schedule_cli_add_list_tick_and_disable(tmp_path: Path, capsys) -> None:
     assert "daily-pipeline enabled pipeline" in capsys.readouterr().out
 
     queue = JobQueue(tmp_path / "build" / "jobs.sqlite3")
-    schedule = queue.list_schedules()[0]
-    with __import__("sqlite3").connect(queue.database) as db:
+    with sqlite3.connect(queue.database) as db:
         db.execute("UPDATE schedules SET next_run_at = 0 WHERE id = ?", ("daily-pipeline",))
 
     assert main(["jobs", "schedule", "tick", "--root", root]) == 0
