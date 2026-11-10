@@ -8,6 +8,7 @@ import pytest
 from amn.jobs import JobQueue
 from amn.pipeline import main
 
+
 def test_enqueue_claim_and_complete_round_trip(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "build" / "jobs.sqlite3")
     job_id = queue.enqueue("pipeline", {"root": "/workspace"}, max_attempts=2)
