@@ -131,13 +131,15 @@ def _record_tiktok_webhook(
                     if "output" not in operation_columns:
                         db.execute("ALTER TABLE tiktok_publish_operations ADD COLUMN output TEXT")
                     operation = db.execute(
-                        "SELECT operation_key, delivery_id, output "
+                        "SELECT operation_key, delivery_id, output, status "
                         "FROM tiktok_publish_operations WHERE publish_id = ?",
                         (publish_id,),
                     ).fetchone()
                 if operation:
                     status = (
-                        "failed"
+                        "complete"
+                        if operation[3] == "complete"
+                        else "failed"
                         if event_type == "provider_webhook_failed"
                         else "complete"
                         if event_type
