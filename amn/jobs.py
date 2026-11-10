@@ -137,12 +137,22 @@ class JobQueue:
             )
             row = db.execute(
                 """
-                SELECT * FROM jobs
-                WHERE status = 'pending' AND available_at <= ?
-                ORDER BY available_at, created_at
+                SELECT * FROM jobs AS candidate
+                WHERE candidate.status = 'pending'
+                  AND candidate.available_at <= ?
+                  AND (
+                    candidate.kind != 'pipeline'
+                    OR NOT EXISTS (
+                        SELECT 1 FROM jobs AS active
+                        WHERE active.kind = 'pipeline'
+                          AND active.status = 'running'
+                          AND active.lease_until > ?
+                    )
+                  )
+                ORDER BY candidate.available_at, candidate.created_at
                 LIMIT 1
                 """,
-                (now,),
+                (now, now),
             ).fetchone()
             if row is None:
                 db.commit()
