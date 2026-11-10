@@ -25,6 +25,15 @@ def _publish_lock(key: str) -> threading.Lock:
         return _PUBLISH_LOCKS.setdefault(key, threading.Lock())
 
 
+def _retry_after_from_response(response: Any) -> float | None:
+    if response is None:
+        return None
+    try:
+        return max(0.0, float(response.headers.get("Retry-After", "")))
+    except (TypeError, ValueError):
+        return None
+
+
 class RateLimiter:
     """Thread-safe token spacing plus bounded exponential retry delay."""
 
