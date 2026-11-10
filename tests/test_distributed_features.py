@@ -136,7 +136,6 @@ def test_enabled_tiktok_target_requires_explicit_direct_post() -> None:
         )
 
 
-
 def test_storage_config_accepts_s3_with_environment_credentials() -> None:
     config = {
         "storage": {
