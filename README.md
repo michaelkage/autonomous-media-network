@@ -70,6 +70,7 @@ amn jobs schedule add --id reddit-earthporn --kind fetch --query earthporn --eve
 amn jobs schedule list --root .
 amn jobs schedule tick --root .
 amn jobs schedule disable --id reddit-earthporn --root .
+amn jobs schedule enable --id reddit-earthporn --root .
 ```
 
 Run `amn jobs schedule tick` from cron (for example, every minute) and keep `amn jobs worker` running separately. The scheduler does not need to stay resident.
