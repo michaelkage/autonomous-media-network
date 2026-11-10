@@ -28,11 +28,14 @@ Production runs fail closed when `AMN_WATERMARK_TEXT` is missing. When an output
 
 Copy `config/amn.example.json` to `config/amn.json`. If `--query` is omitted from `amn fetch`, AMN ingests every subreddit listed in `sources.reddit`. Routes map item categories/tags or the source subreddit in each image sidecar to enabled targets. Example sidecar metadata: `"categories": ["landscape"]`. The default route is empty, so content is never broadcast accidentally. Use `amn publish --routed --root .` to dispatch through those mappings. Credentials belong in environment variables, not JSON configuration.
 
-Supported publisher adapters include Bluesky, Telegram, Facebook Pages, Instagram Graph API, and TikTok Content Posting API photo posts:
+Supported publisher adapters include Bluesky, Telegram, Facebook Pages, X, Instagram Graph API, and TikTok Content Posting API photo posts:
 
 ```bash
 TELEGRAM_BOT_TOKEN="..." TELEGRAM_CHAT_ID="@your_channel" \
   amn publish --platform telegram --root .
+
+# X: OAuth 2.0 user access token with tweet.write, media.write, and users.read
+X_USER_ACCESS_TOKEN="..." amn publish --platform x --root .
 
 # Facebook Page: Page access token with pages_manage_posts + page ID
 FACEBOOK_PAGE_ACCESS_TOKEN="..." FACEBOOK_PAGE_ID="..." \
@@ -121,6 +124,7 @@ Open `http://127.0.0.1:8765`. The optional FastAPI dashboard exposes workspace c
 - Never commit `config/amn.json`, bot tokens, app passwords, or OAuth refresh tokens.
 - Telegram bots must be added to the destination channel with permission to post.
 - Facebook publishing requires a Page access token for a Page where the authorizing person has the CREATE_CONTENT task, plus the pages_manage_posts, pages_read_engagement, and pages_show_list permissions. Keep the Page token in FACEBOOK_PAGE_ACCESS_TOKEN; it is never stored in AMN config.
+- X publishing requires an OAuth 2.0 user access token with `tweet.write`, `media.write`, and `users.read` scopes. Store it in `X_USER_ACCESS_TOKEN`. AMN uploads a JPEG through X API v2's simple image-upload endpoint (5 MiB limit), then creates the Post with the returned media ID. A successful media upload followed by a failed Post request can leave an unused media object; a crash after Post acceptance but before local state persistence can still produce an at-least-once duplicate.
 - Instagram/TikTok reposting must respect creator rights, platform policies, and required attribution.
 - Reddit's public endpoint does not expose view counts; AMN does not fabricate an engagement denominator. Reddit downloads are streamed and capped at 25 MiB per asset.
 - Dynamic config rejects unknown target fields, plaintext credential fields, invalid platform names, malformed routes, and non-integer threshold values.
