@@ -61,9 +61,11 @@ class FacebookPagePublisher(Publisher):
                 raise RuntimeError("Facebook returned an invalid response")
             if payload.get("error"):
                 error = payload["error"]
-                message = error.get("message", "Facebook rejected the photo") if isinstance(
-                    error, dict
-                ) else "Facebook rejected the photo"
+                message = (
+                    error.get("message", "Facebook rejected the photo")
+                    if isinstance(error, dict)
+                    else "Facebook rejected the photo"
+                )
                 raise RuntimeError(str(message).replace(self.token, "[REDACTED]")[:300])
             post_id = payload.get("post_id") or payload.get("id")
             if not isinstance(post_id, (str, int)) or isinstance(post_id, bool):
