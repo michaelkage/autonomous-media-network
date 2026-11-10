@@ -177,8 +177,7 @@ def resolve_instagram_operation(
                 ) VALUES (?, 'instagram', ?, ?, 1, ?, NULL, ?)
                 """,
                 (
-                    operation["delivery_id"]
-                    or delivery_id_for("instagram", operation_key.strip()),
+                    operation["delivery_id"] or delivery_id_for("instagram", operation_key.strip()),
                     str(operation["output"])
                     if operation["output"]
                     else "container:" + str(operation["container_id"]),
