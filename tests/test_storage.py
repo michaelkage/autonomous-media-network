@@ -141,9 +141,7 @@ def test_routed_instagram_publishing_uploads_to_configured_storage(
     assert remote.calls == [(image.resolve(), "caption")]
 
 
-def test_storage_backed_publisher_sanitizes_upload_failure(
-    tmp_path: Path, capsys
-) -> None:
+def test_storage_backed_publisher_sanitizes_upload_failure(tmp_path: Path, capsys) -> None:
     image = tmp_path / "asset.jpg"
     image.write_bytes(b"jpeg")
     storage = MagicMock()
