@@ -29,8 +29,9 @@ def hamming(a: int, b: int) -> int:
 
 
 class DuplicateDetector:
-    def __init__(self, db_path: Path = Path("build/hashes.json"),
-                 max_distance: int = MAX_DISTANCE) -> None:
+    def __init__(
+        self, db_path: Path = Path("build/hashes.json"), max_distance: int = MAX_DISTANCE
+    ) -> None:
         if not 0 <= max_distance <= 64:
             raise ValueError("max_distance must be between 0 and 64")
         self.db_path, self.max_distance = Path(db_path), max_distance
@@ -59,8 +60,9 @@ class DuplicateDetector:
     def save(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.db_path.with_name(f".{self.db_path.name}.tmp")
-        temporary.write_text(json.dumps([f"{h:016x}" for h in sorted(self.hashes)], indent=2),
-                             encoding="utf-8")
+        temporary.write_text(
+            json.dumps([f"{h:016x}" for h in sorted(self.hashes)], indent=2), encoding="utf-8"
+        )
         temporary.replace(self.db_path)
 
     def distance_to_known(self, image: Image.Image) -> int | None:
@@ -85,5 +87,8 @@ class Captioner:
     @staticmethod
     def generate(image: Image.Image, metrics: dict[str, Any]) -> str:
         score = metrics.get("likes", 0)
-        return ("A highly engaged image selected by the AMN curation pipeline."
-                if score > 1000 else "A curated image selected by the AMN pipeline.")
+        return (
+            "A highly engaged image selected by the AMN curation pipeline."
+            if score > 1000
+            else "A curated image selected by the AMN pipeline."
+        )
