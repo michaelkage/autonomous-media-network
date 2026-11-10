@@ -224,6 +224,54 @@ def test_delivery_journal_records_retry_and_terminal_failure(
     assert chronological[-1]["will_retry"] is False
 
 
+def test_delivery_event_snapshot_reads_legacy_schema_and_writer_migrates(
+    tmp_path: Path,
+) -> None:
+    import sqlite3
+
+    from amn.delivery_events import delivery_event_snapshot, record_delivery_event
+
+    database = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(database) as db:
+        db.execute(
+            """
+            CREATE TABLE delivery_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                delivery_id TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                output TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                attempt INTEGER NOT NULL,
+                will_retry INTEGER NOT NULL DEFAULT 0,
+                retry_after_seconds REAL,
+                created_at REAL NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO delivery_events (
+                delivery_id, platform, output, event_type, attempt, created_at
+            ) VALUES ('legacy-id', 'telegram', 'outbox/old.jpg', 'published', 1, 1)
+            """
+        )
+
+    before = delivery_event_snapshot(database)
+    assert before["recent"][0]["provider_message_id"] is None
+
+    record_delivery_event(
+        database,
+        platform="telegram",
+        delivery_key="new-delivery",
+        output="outbox/new.jpg",
+        event_type="provider_accepted",
+        attempt=1,
+        provider_message_id=481,
+    )
+    after = delivery_event_snapshot(database)
+    assert after["recent"][0]["provider_message_id"] == "481"
+
+
 def test_delivery_event_snapshot_validates_limit(tmp_path: Path) -> None:
     from amn.delivery_events import delivery_event_snapshot
 
