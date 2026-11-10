@@ -152,9 +152,7 @@ def test_alerts_cli_uses_private_alert_chat_not_publishing_chat(
 
 
 
-def test_alerts_can_run_from_the_durable_schedule_worker(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_alerts_can_run_from_the_durable_schedule_worker(tmp_path: Path, monkeypatch) -> None:
     database = tmp_path / "build" / "jobs.sqlite3"
     queue = JobQueue(database)
     failed_job = queue.enqueue("publish", max_attempts=1)
