@@ -107,7 +107,6 @@ def test_dashboard_exposes_durable_job_counts_and_recent_jobs(tmp_path: Path) ->
     assert "payload" not in jobs["recent"][0]
 
 
-
 def test_dashboard_exposes_schedule_metadata_without_payload(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "build" / "jobs.sqlite3")
     queue.add_schedule(
