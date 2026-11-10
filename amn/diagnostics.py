@@ -120,6 +120,37 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                     )
                 )
 
+        elif platform == "facebook":
+            token = os.environ.get(target.get("token_env", "FACEBOOK_PAGE_ACCESS_TOKEN"))
+            page_id = target.get("facebook_page_id")
+            if not token or not page_id:
+                results.append(
+                    _check(target_id, "credentials", False, "Page access token or Page ID missing")
+                )
+                continue
+            try:
+                response = client.get(
+                    f"https://graph.facebook.com/v26.0/{page_id}",
+                    params={"fields": "id,name", "access_token": token},
+                    timeout=15,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if payload.get("error") or str(payload.get("id")) != str(page_id):
+                    raise ValueError("Facebook Page lookup failed")
+                results.append(
+                    _check(target_id, "account", True, "Facebook Page token accepted")
+                )
+            except (requests.RequestException, ValueError, TypeError, AttributeError):
+                results.append(
+                    _check(
+                        target_id,
+                        "account",
+                        False,
+                        "Facebook Page token, Page ID, or permissions rejected",
+                    )
+                )
+
         elif platform == "instagram":
             token = os.environ.get(target.get("token_env", "INSTAGRAM_ACCESS_TOKEN"))
             user_id = target.get("instagram_user_id")
