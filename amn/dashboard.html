@@ -43,7 +43,8 @@ async function load() {
   const deliveryData = await deliveryResponse.json();
   document.querySelector("#deliveryHealth").textContent = JSON.stringify({
     webhooks: deliveryData.webhooks,
-    tiktok_operations: deliveryData.tiktok_operations
+    tiktok_operations: deliveryData.tiktok_operations,
+    instagram_operations: deliveryData.instagram_operations
   }, null, 2);
   document.querySelector("#deliveries").textContent = JSON.stringify({
     counts: deliveryData.counts,
