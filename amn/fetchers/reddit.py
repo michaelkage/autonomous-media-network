@@ -12,6 +12,7 @@ import requests
 
 __all__ = ["RedditFetcher"]
 _IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
+_MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
 
 class RedditFetcher:
@@ -57,11 +58,11 @@ class RedditFetcher:
             sidecar_path.unlink(missing_ok=True)
             temp_image = temp_sidecar = None
             try:
-                download = self.session.get(image_url, timeout=(5, 30))
+                download = self.session.get(image_url, timeout=(5, 30), stream=True)
                 download.raise_for_status()
-                content = download.content
-                if not content:
-                    raise ValueError("empty image response")
+                content_length = download.headers.get("Content-Length")
+                if content_length and int(content_length) > _MAX_IMAGE_BYTES:
+                    raise ValueError("image exceeds the 25 MiB download limit")
                 metrics = {
                     "likes": max(0, int(payload.get("score") or 0)),
                     "comments": max(0, int(payload.get("num_comments") or 0)),
@@ -73,7 +74,16 @@ class RedditFetcher:
                 }
                 with tempfile.NamedTemporaryFile(dir=inbox_dir, delete=False) as f:
                     temp_image = Path(f.name)
-                    f.write(content)
+                    total_bytes = 0
+                    for chunk in download.iter_content(chunk_size=64 * 1024):
+                        if not chunk:
+                            continue
+                        total_bytes += len(chunk)
+                        if total_bytes > _MAX_IMAGE_BYTES:
+                            raise ValueError("image exceeds the 25 MiB download limit")
+                        f.write(chunk)
+                    if total_bytes == 0:
+                        raise ValueError("empty image response")
                     f.flush()
                     os.fsync(f.fileno())
                 with tempfile.NamedTemporaryFile(
