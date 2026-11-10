@@ -348,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
     pub = sub.add_parser("publish")
     pub.add_argument(
         "--platform",
-        choices=["mock", "bluesky", "telegram", "facebook", "x", "instagram", "tiktok"],
+        choices=["mock", "bluesky", "telegram", "facebook", "x", "reddit", "instagram", "tiktok"],
     )
     pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
     pub.add_argument("--root", type=Path, default=Path.cwd())
@@ -710,6 +710,7 @@ def main(argv: list[str] | None = None) -> int:
         from .publish import BlueskyPublisher, MockPublisher, publish_manifest
         from .publishers.facebook import FacebookPagePublisher
         from .publishers.instagram import InstagramPublisher
+        from .publishers.reddit import RedditPublisher
         from .publishers.telegram import TelegramPublisher
         from .publishers.tiktok import TikTokPublisher
         from .publishers.x import XPublisher
@@ -730,6 +731,19 @@ def main(argv: list[str] | None = None) -> int:
                 print("error: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID required", file=sys.stderr)
                 return 1
             publisher = TelegramPublisher(token, chat_id)
+        elif args.platform == "reddit":
+            token = os.environ.get("REDDIT_USER_ACCESS_TOKEN")
+            subreddit = os.environ.get("REDDIT_SUBREDDIT")
+            media_url = os.environ.get("AMN_PUBLIC_MEDIA_URL")
+            user_agent = os.environ.get("AMN_REDDIT_USER_AGENT")
+            if not token or not subreddit or not media_url or not user_agent:
+                print(
+                    "error: REDDIT_USER_ACCESS_TOKEN, REDDIT_SUBREDDIT, "
+                    "AMN_PUBLIC_MEDIA_URL and AMN_REDDIT_USER_AGENT required",
+                    file=sys.stderr,
+                )
+                return 1
+            publisher = RedditPublisher(token, subreddit, media_url, user_agent)
         elif args.platform == "x":
             token = os.environ.get("X_USER_ACCESS_TOKEN")
             if not token:
