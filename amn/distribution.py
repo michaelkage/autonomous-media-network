@@ -111,10 +111,11 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             parsed = urlparse(media_url)
             if parsed.scheme != "https" or not parsed.netloc:
                 raise ValueError(f"target {target_id!r}: public_base_url must use HTTPS")
-        if platform.lower() == "tiktok" and "direct_post_enabled" in target:
-            if not target["direct_post_enabled"]:
-                # Draft/inbox mode is not implemented; don't advertise this as a live target.
-                raise ValueError(f"target {target_id!r}: TikTok direct posting must be explicitly enabled")
+        if platform.lower() == "tiktok" and target.get("enabled", True):
+            if not target.get("direct_post_enabled", False):
+                raise ValueError(
+                    f"target {target_id!r}: enable direct_post_enabled for active TikTok targets"
+                )
 
     for route, target_ids in routes.items():
         if not isinstance(route, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", route):
