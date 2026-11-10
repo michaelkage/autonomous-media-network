@@ -114,11 +114,13 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         "chat_id",
         "instagram_user_id",
         "facebook_page_id",
+        "subreddit",
+        "user_agent_env",
         "public_base_url",
         "privacy_level",
         "direct_post_enabled",
     }
-    supported_platforms = {"telegram", "bluesky", "instagram", "tiktok", "facebook", "x"}
+    supported_platforms = {"telegram", "bluesky", "instagram", "tiktok", "facebook", "x", "reddit"}
     ids: set[str] = set()
     for target in targets:
         if not isinstance(target, dict):
@@ -140,7 +142,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"target {target_id!r}: enabled must be boolean")
         if "direct_post_enabled" in target and not isinstance(target["direct_post_enabled"], bool):
             raise ValueError(f"target {target_id!r}: direct_post_enabled must be boolean")
-        for env_key in ("token_env", "handle_env", "password_env"):
+        for env_key in ("token_env", "handle_env", "password_env", "user_agent_env"):
             value = target.get(env_key)
             if value is not None and (not isinstance(value, str) or not value.isidentifier()):
                 raise ValueError(
@@ -150,6 +152,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             "chat_id",
             "instagram_user_id",
             "facebook_page_id",
+            "subreddit",
             "public_base_url",
             "privacy_level",
         ):
@@ -157,7 +160,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"target {target_id!r}: {string_key} must be a non-empty string")
 
-        if platform.lower() in {"instagram", "tiktok"}:
+        if platform.lower() in {"instagram", "tiktok", "reddit"}:
             from urllib.parse import urlparse
 
             media_url = target.get("public_base_url")
@@ -166,6 +169,9 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             parsed = urlparse(media_url)
             if parsed.scheme != "https" or not parsed.netloc:
                 raise ValueError(f"target {target_id!r}: public_base_url must use HTTPS")
+        if platform.lower() == "reddit" and target.get("enabled", True):
+            if not re.fullmatch(r"[A-Za-z0-9_]{2,21}", target.get("subreddit", "")):
+                raise ValueError(f"target {target_id!r}: subreddit must be a valid subreddit name")
         if platform.lower() == "facebook" and target.get("enabled", True):
             if not re.fullmatch(r"[0-9]+", target.get("facebook_page_id", "")):
                 raise ValueError(f"target {target_id!r}: facebook_page_id must be numeric")
@@ -238,6 +244,7 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
     from .publish import BlueskyPublisher, publish_manifest
     from .publishers.facebook import FacebookPagePublisher
     from .publishers.instagram import InstagramPublisher
+    from .publishers.reddit import RedditPublisher
     from .publishers.telegram import TelegramPublisher
     from .publishers.tiktok import TikTokPublisher
     from .publishers.x import XPublisher
@@ -269,6 +276,15 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
                 print(f"skipping {target['id']}: Bluesky credentials missing")
                 continue
             publisher = BlueskyPublisher(handle, password)
+        elif platform == "reddit":
+            token = os.environ.get(target.get("token_env", "REDDIT_USER_ACCESS_TOKEN"))
+            user_agent = os.environ.get(target.get("user_agent_env", "AMN_REDDIT_USER_AGENT"))
+            subreddit = target.get("subreddit")
+            media_url = target.get("public_base_url")
+            if not token or not user_agent or not subreddit or not media_url:
+                print(f"skipping {target['id']}: Reddit token, User-Agent, subreddit or public_base_url missing")
+                continue
+            publisher = RedditPublisher(token, str(subreddit), str(media_url), user_agent)
         elif platform == "x":
             token = os.environ.get(target.get("token_env", "X_USER_ACCESS_TOKEN"))
             if not token:
@@ -325,7 +341,7 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
         if not selected:
             totals[target["id"]] = 0
             continue
-        if platform in {"instagram", "tiktok"} and storage_config:
+        if platform in {"instagram", "tiktok", "reddit"} and storage_config:
             if media_storage is None:
                 from .storage import S3MediaStorage
 
