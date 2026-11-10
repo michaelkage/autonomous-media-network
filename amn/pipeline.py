@@ -102,11 +102,14 @@ def process_image(
 ) -> tuple[Verdict, dict[str, Any]]:
     with Image.open(source) as image:
         image.load()
-        if detector and detector.is_duplicate(image):
-            return (
-                Verdict(False, ("duplicate image detected via dHash",), image.width, image.height),
-                {},
-            )
+        if detector:
+            distance = detector.distance_to_known(image)
+            if distance is not None and distance <= detector.max_distance:
+                reason = (
+                    "duplicate image detected via dHash "
+                    f"(distance {distance}, threshold {detector.max_distance})"
+                )
+                return Verdict(False, (reason,), image.width, image.height), {}
         engagement, broken_metrics = _read_engagement(source)
         verdict = vet(image.format, image.size, engagement, thresholds)
         if broken_metrics:
