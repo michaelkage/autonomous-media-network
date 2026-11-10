@@ -28,6 +28,7 @@ class S3MediaStorage:
         if not bucket:
             raise ValueError("S3 bucket name is required")
         self.bucket = bucket
+        self._uploaded: dict[tuple[str, int, int], str] = {}
         if client is not None:
             self.client = client
             return
@@ -51,7 +52,6 @@ class S3MediaStorage:
                 aws_session_token=session_token,
             )
         self.client = boto3.client(**options)
-        self._uploaded: dict[tuple[str, int, int], str] = {}
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> S3MediaStorage:
