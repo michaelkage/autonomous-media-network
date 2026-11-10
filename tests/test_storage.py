@@ -125,7 +125,7 @@ def test_routed_ig_uses_s3_storage(tmp_path: Path, monkeypatch) -> None:
     )
     monkeypatch.setenv("INSTAGRAM_ACCESS_TOKEN", "token")
     remote = RecordingPublisher()
-    monkeypatch.setattr(instagram, "InstagramPublisher", lambda *args: remote)
+    monkeypatch.setattr(instagram, "InstagramPublisher", lambda *args, **kwargs: remote)
     fake_storage = MagicMock()
     monkeypatch.setattr(
         S3MediaStorage,
