@@ -11,7 +11,7 @@ from ..publish import Publisher, _retry_after_from_response
 
 __all__ = ["XPublisher"]
 
-_MAX_IMAGE_BYTES = 5 * 1024 * 1024
+_MAX_IMAGE_BYTES = 5_000_000
 
 
 class XPublisher(Publisher):
@@ -53,7 +53,7 @@ class XPublisher(Publisher):
             image_path = Path(image_path)
             size = image_path.stat().st_size
             if size > _MAX_IMAGE_BYTES:
-                raise ValueError("X image uploads are limited to 5 MiB")
+                raise ValueError("X image uploads are limited to 5 MB")
             if size == 0:
                 raise ValueError("X image upload cannot be empty")
             media = base64.b64encode(image_path.read_bytes()).decode("ascii")
