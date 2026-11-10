@@ -239,3 +239,15 @@ def test_schedule_rejects_invalid_intervals(tmp_path: Path, interval: float) -> 
 
     with pytest.raises(ValueError, match="interval"):
         queue.add_schedule("invalid", "pipeline", {}, interval)
+
+
+
+def test_sub_microsecond_schedule_intervals_do_not_collide(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+    queue.add_schedule("fast", "pipeline", {}, 0.0000001, first_run_at=1000)
+
+    assert queue.enqueue_due_schedules(now=1000) == 1
+    next_run = queue.list_schedules()[0]["next_run_at"]
+    assert next_run > 1000
+    assert queue.enqueue_due_schedules(now=next_run) == 1
+    assert queue.counts()["pending"] == 2
