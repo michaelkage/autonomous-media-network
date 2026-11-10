@@ -111,14 +111,24 @@ def _record_tiktok_webhook(
                     "SELECT 1 FROM sqlite_master WHERE type = 'table' "
                     "AND name = 'tiktok_publish_operations'"
                 ).fetchone()
-                operation = (
-                    db.execute(
-                        "SELECT operation_key FROM tiktok_publish_operations WHERE publish_id = ?",
+                operation = None
+                if operation_table:
+                    operation_columns = {
+                        row[1] for row in db.execute("PRAGMA table_info(tiktok_publish_operations)")
+                    }
+                    if "delivery_id" not in operation_columns:
+                        db.execute(
+                            "ALTER TABLE tiktok_publish_operations ADD COLUMN delivery_id TEXT"
+                        )
+                    if "output" not in operation_columns:
+                        db.execute(
+                            "ALTER TABLE tiktok_publish_operations ADD COLUMN output TEXT"
+                        )
+                    operation = db.execute(
+                        "SELECT operation_key, delivery_id, output "
+                        "FROM tiktok_publish_operations WHERE publish_id = ?",
                         (publish_id,),
                     ).fetchone()
-                    if operation_table
-                    else None
-                )
                 if operation:
                     status = (
                         "failed"
@@ -137,6 +147,16 @@ def _record_tiktok_webhook(
                         "WHERE publish_id = ?",
                         (status, time.time(), publish_id),
                     )
+                correlated_delivery_id = (
+                    str(operation[1])
+                    if operation and operation[1]
+                    else delivery_id_for("tiktok-webhook", publish_id)
+                )
+                correlated_output = (
+                    str(operation[2])
+                    if operation and operation[2]
+                    else f"publish_id:{publish_id}"
+                )
                 db.execute(
                     """
                     INSERT INTO delivery_events (
@@ -145,8 +165,8 @@ def _record_tiktok_webhook(
                     ) VALUES (?, 'tiktok', ?, ?, 1, 0, NULL, ?)
                     """,
                     (
-                        delivery_id_for("tiktok-webhook", publish_id),
-                        f"publish_id:{publish_id}",
+                        correlated_delivery_id,
+                        correlated_output,
                         event_type,
                         created_at,
                     ),
