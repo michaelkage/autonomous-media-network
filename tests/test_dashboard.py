@@ -162,6 +162,70 @@ def test_dashboard_exposes_sanitized_delivery_event_history(tmp_path: Path) -> N
     assert "caption" not in json.dumps(payload)
 
 
+def test_dashboard_exposes_instagram_container_and_provider_error_history(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    database.parent.mkdir()
+    with sqlite3.connect(database) as db:
+        db.execute(
+            """
+            CREATE TABLE instagram_publish_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operation_key TEXT NOT NULL,
+                container_id TEXT,
+                event_kind TEXT NOT NULL,
+                container_status TEXT,
+                phase TEXT,
+                http_status INTEGER,
+                error_type TEXT,
+                error_code TEXT,
+                error_subcode TEXT,
+                fbtrace_id TEXT,
+                message TEXT,
+                delivery_id TEXT,
+                output TEXT,
+                created_at REAL NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO instagram_publish_history (
+                operation_key, container_id, event_kind, container_status,
+                phase, http_status, error_type, error_code, error_subcode,
+                fbtrace_id, message, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "hashed-operation-key",
+                "container-expired",
+                "provider_error",
+                None,
+                "media_publish",
+                400,
+                "OAuthException",
+                "9007",
+                "2207052",
+                "trace-123",
+                "Invalid media URL",
+                time.time(),
+            ),
+        )
+
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+    response = client.get("/api/deliveries")
+
+    assert response.status_code == 200
+    history = response.json()["instagram_operations"]["container_history"]
+    assert len(history) == 1
+    assert history[0]["container_id"] == "container-expired"
+    assert history[0]["error_code"] == "9007"
+    assert history[0]["error_subcode"] == "2207052"
+    assert history[0]["fbtrace_id"] == "trace-123"
+    assert history[0]["message"] == "Invalid media URL"
+
+
 def test_dashboard_delivery_history_rejects_invalid_limit(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
     response = client.get("/api/deliveries?limit=501")
