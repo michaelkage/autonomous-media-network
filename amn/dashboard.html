@@ -20,6 +20,7 @@ textarea{width:100%;font:13px monospace;background:#0b1017;color:#e8edf4}
 <section><h2>Provider callback health</h2><pre id="deliveryHealth">Loading…</pre></section>
 <section><h2>Delivery timeline</h2><pre id="deliveries">Loading…</pre></section>
 <section><h2>Instagram reconciliation audit</h2><pre id="instagramAudit">Loading…</pre></section>
+<section><h2>Instagram container and provider errors</h2><pre id="instagramHistory">Loading…</pre></section>
 <section>
 <h2>Curation controls</h2>
 <label>Minimum likes: <b id="likesValue">500</b>
@@ -53,6 +54,9 @@ async function load() {
   }, null, 2);
   document.querySelector("#instagramAudit").textContent = JSON.stringify(
     deliveryData.instagram_operations.resolution_history, null, 2
+  );
+  document.querySelector("#instagramHistory").textContent = JSON.stringify(
+    deliveryData.instagram_operations.container_history, null, 2
   );
   config = await (await fetch("/api/config")).json();
   configEditor.value = JSON.stringify(config, null, 2);
