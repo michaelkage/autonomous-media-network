@@ -11,6 +11,12 @@
       "token_env": "TELEGRAM_BOT_TOKEN"
     },
     {
+      "id": "x-main",
+      "platform": "x",
+      "enabled": false,
+      "token_env": "X_USER_ACCESS_TOKEN"
+    },
+    {
       "id": "facebook-main",
       "platform": "facebook",
       "enabled": false,
@@ -38,7 +44,7 @@
   "storage": null,
   "routes": {
     "default": [],
-    "landscape": ["telegram-main", "facebook-main", "instagram-main", "tiktok-main"],
+    "landscape": ["telegram-main", "facebook-main", "x-main", "instagram-main", "tiktok-main"],
     "architecture": ["telegram-main", "instagram-main"],
     "earthporn": ["telegram-main", "instagram-main"],
     "wallpapers": ["telegram-main", "tiktok-main"]
