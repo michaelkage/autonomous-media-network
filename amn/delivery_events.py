@@ -258,7 +258,9 @@ def delivery_event_snapshot(
             "resolution_history": [],
         }
         if instagram_table:
-            columns = {row[1] for row in db.execute("PRAGMA table_info(instagram_publish_operations)")}
+            columns = {
+                row[1] for row in db.execute("PRAGMA table_info(instagram_publish_operations)")
+            }
             output_column = "output" if "output" in columns else "NULL"
             rows = db.execute(
                 "SELECT operation_key, container_id, status, updated_at, "
