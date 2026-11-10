@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import hmac
 import json
+import math
 import os
 import sqlite3
 import time
@@ -207,13 +208,19 @@ def create_webhook_app(
 
         receipt_key = hashlib.sha256(raw_body).hexdigest()
         try:
+            event_created_at = float(payload.get("create_time") or time.time())
+        except (TypeError, ValueError, OverflowError):
+            event_created_at = time.time()
+        if not math.isfinite(event_created_at) or event_created_at <= 0:
+            event_created_at = time.time()
+        try:
             inserted = _record_tiktok_webhook(
                 root / "build" / "jobs.sqlite3",
                 receipt_key=receipt_key,
                 event_name=event_name,
                 publish_id=publish_id,
                 event_type=event_type,
-                created_at=float(payload.get("create_time") or time.time()),
+                created_at=event_created_at,
             )
         except sqlite3.Error as exc:
             raise HTTPException(
