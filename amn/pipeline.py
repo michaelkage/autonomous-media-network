@@ -268,8 +268,8 @@ def main(argv: list[str] | None = None) -> int:
             print("error: --platform or --routed is required", file=sys.stderr)
             return 2
         from .publish import BlueskyPublisher, MockPublisher, publish_manifest
-        from .publishers.telegram import TelegramPublisher
         from .publishers.instagram import InstagramPublisher
+        from .publishers.telegram import TelegramPublisher
         from .publishers.tiktok import TikTokPublisher
         if args.platform == "mock":
             publisher = MockPublisher()
