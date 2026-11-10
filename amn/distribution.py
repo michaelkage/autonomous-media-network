@@ -50,8 +50,13 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(storage, dict):
             raise ValueError("storage must be an object or null")
         allowed_storage_fields = {
-            "provider", "bucket", "region", "endpoint_url_env",
-            "access_key_env", "secret_key_env", "session_token_env",
+            "provider",
+            "bucket",
+            "region",
+            "endpoint_url_env",
+            "access_key_env",
+            "secret_key_env",
+            "session_token_env",
         }
         if set(storage) - allowed_storage_fields:
             raise ValueError(
