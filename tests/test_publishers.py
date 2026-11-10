@@ -150,7 +150,9 @@ def test_tiktok_rejects_unapproved_privacy_level(tmp_path: Path) -> None:
         assert publisher.publish(image, "caption") is False
 
 
-def test_tiktok_sqlite_rate_limiter_coordinates_publisher_instances(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tiktok_sqlite_rate_limiter_coordinates_publisher_instances(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     database = tmp_path / "jobs.sqlite3"
     first = SQLiteTokenRateLimiter(database, "hashed-token", min_interval=10)
     second = SQLiteTokenRateLimiter(database, "hashed-token", min_interval=10)
