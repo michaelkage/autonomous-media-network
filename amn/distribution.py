@@ -146,7 +146,13 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(
                     f"target {target_id!r}: {env_key} must be an environment variable name"
                 )
-        for string_key in ("chat_id", "instagram_user_id", "facebook_page_id", "public_base_url", "privacy_level"):
+        for string_key in (
+            "chat_id",
+            "instagram_user_id",
+            "facebook_page_id",
+            "public_base_url",
+            "privacy_level",
+        ):
             value = target.get(string_key)
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"target {target_id!r}: {string_key} must be a non-empty string")
