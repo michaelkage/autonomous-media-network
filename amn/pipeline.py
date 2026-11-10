@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--watermark", default="")
     run_parser.add_argument("--dry-run", action="store_true")
     pub = sub.add_parser("publish")
-    pub.add_argument("--platform", choices=["mock", "bluesky", "telegram"])
+    pub.add_argument("--platform", choices=["mock", "bluesky", "telegram", "instagram", "tiktok"])
     pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
     pub.add_argument("--root", type=Path, default=Path.cwd())
     fetch = sub.add_parser("fetch")
@@ -269,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         from .publish import BlueskyPublisher, MockPublisher, publish_manifest
         from .publishers.telegram import TelegramPublisher
+        from .publishers.instagram import InstagramPublisher
+        from .publishers.tiktok import TikTokPublisher
         if args.platform == "mock":
             publisher = MockPublisher()
         elif args.platform == "bluesky":
@@ -277,12 +279,30 @@ def main(argv: list[str] | None = None) -> int:
                 print("error: BLUESKY_HANDLE and BLUESKY_APP_PASSWORD required", file=sys.stderr)
                 return 1
             publisher = BlueskyPublisher(handle, password)
-        else:
+        elif args.platform == "telegram":
             token, chat_id = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
             if not token or not chat_id:
                 print("error: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID required", file=sys.stderr)
                 return 1
             publisher = TelegramPublisher(token, chat_id)
+        elif args.platform == "instagram":
+            token = os.environ.get("INSTAGRAM_ACCESS_TOKEN")
+            user_id = os.environ.get("INSTAGRAM_USER_ID")
+            media_url = os.environ.get("AMN_PUBLIC_MEDIA_URL")
+            if not token or not user_id or not media_url:
+                print("error: INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_USER_ID and AMN_PUBLIC_MEDIA_URL required", file=sys.stderr)
+                return 1
+            publisher = InstagramPublisher(token, user_id, media_url)
+        else:
+            token = os.environ.get("TIKTOK_ACCESS_TOKEN")
+            media_url = os.environ.get("AMN_PUBLIC_MEDIA_URL")
+            privacy = os.environ.get("TIKTOK_PRIVACY_LEVEL")
+            if not token or not media_url or not privacy:
+                print("error: TIKTOK_ACCESS_TOKEN, AMN_PUBLIC_MEDIA_URL and TIKTOK_PRIVACY_LEVEL required", file=sys.stderr)
+                return 1
+            publisher = TikTokPublisher(
+                token, media_url, privacy,
+                direct_post_enabled=os.environ.get("TIKTOK_DIRECT_POST_ENABLED") == "true")
         count = publish_manifest(args.root / BUILD_DIR / "manifest.json", publisher, root=args.root)
         print(f"successfully published {count} assets to {args.platform}")
         return 0
