@@ -78,7 +78,7 @@ Run `amn jobs schedule tick` from cron (for example, every minute) and keep `amn
 amn jobs enqueue --kind fetch --query earthporn --dedupe-key "reddit:earthporn:2026-11-10" --root .
 ```
 
-This is deliberately a single-host queue backed by a local SQLite database, not a distributed multi-host broker. Run one or more workers against the same local database; do not put the SQLite file on a network filesystem. Scheduling recurring jobs is a separate deployment concern: cron or a system scheduler can enqueue jobs without keeping the dashboard alive.
+This is deliberately a single-host queue backed by a local SQLite database, not a distributed multi-host broker. Run one or more workers against the same local database; do not put the SQLite file on a network filesystem. The scheduler is a separate process concern: cron or a system scheduler should invoke `amn jobs schedule tick` periodically, independently of the dashboard.
 
 ## Diagnostics dashboard
 
