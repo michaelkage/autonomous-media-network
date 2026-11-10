@@ -378,7 +378,9 @@ def main(argv: list[str] | None = None) -> int:
     enqueue = job_commands.add_parser(
         "enqueue", help="enqueue a pipeline, fetch, or routed publish job"
     )
-    enqueue.add_argument("--kind", choices=["pipeline", "fetch", "publish", "alerts"], required=True)
+    enqueue.add_argument(
+        "--kind", choices=["pipeline", "fetch", "publish", "alerts"], required=True
+    )
     enqueue.add_argument("--query", help="one subreddit for fetch jobs")
     enqueue.add_argument("--limit", type=int, default=10)
     enqueue.add_argument("--dedupe-key")
