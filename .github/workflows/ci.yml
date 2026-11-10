@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,6 +20,7 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install -e ".[dev]"
+      - run: ruff format --diff .
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
