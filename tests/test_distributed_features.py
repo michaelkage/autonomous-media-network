@@ -78,7 +78,10 @@ def test_rate_limiter_retry_delay_is_bounded() -> None:
 
 
 def test_pipeline_fails_closed_without_watermark(tmp_path: Path) -> None:
-    (tmp_path / "inbox").mkdir()
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    Image.new("RGB", (1200, 1200), "white").save(inbox / "asset.jpg")
+    (inbox / "asset.json").write_text(json.dumps({"likes": 500}), encoding="utf-8")
     result = run(tmp_path, watermark_text="")
     assert result.errors
     assert "watermark required" in result.errors[0]
