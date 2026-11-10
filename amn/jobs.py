@@ -99,22 +99,22 @@ class JobQueue:
         now = time.time()
         job_id = str(uuid.uuid4())
         encoded = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"))
-        with self._connect() as db:
-            if dedupe_key:
-                existing = db.execute(
-                    "SELECT id FROM jobs WHERE dedupe_key = ?", (dedupe_key,)
-                ).fetchone()
-                if existing:
-                    return str(existing["id"])
-            db.execute(
+        with closing(self._connect()) as db:
+            cursor = db.execute(
                 """
-                INSERT INTO jobs (
+                INSERT OR IGNORE INTO jobs (
                     id, kind, payload, status, attempts, max_attempts,
                     available_at, created_at, updated_at, dedupe_key
                 ) VALUES (?, ?, ?, 'pending', 0, ?, ?, ?, ?, ?)
                 """,
                 (job_id, kind.strip(), encoded, max_attempts, now + delay, now, now, dedupe_key),
             )
+            if cursor.rowcount == 0 and dedupe_key:
+                existing = db.execute(
+                    "SELECT id FROM jobs WHERE dedupe_key = ?", (dedupe_key,)
+                ).fetchone()
+                if existing:
+                    return str(existing["id"])
         return job_id
 
     def claim(self, worker_id: str, *, lease_seconds: float = 300) -> dict[str, Any] | None:
@@ -123,7 +123,7 @@ class JobQueue:
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
         now = time.time()
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             # A crashed worker's lease expires. Retry if budget remains, otherwise
             # make the failure terminal instead of leaving an immortal running job.
@@ -170,7 +170,7 @@ class JobQueue:
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
         now = time.time()
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             changed = db.execute(
                 """
                 UPDATE jobs SET lease_until = ?, updated_at = ?
@@ -182,7 +182,7 @@ class JobQueue:
 
     def complete(self, job_id: str, worker_id: str) -> bool:
         now = time.time()
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             changed = db.execute(
                 """
                 UPDATE jobs
@@ -203,7 +203,8 @@ class JobQueue:
         retry_delay: float | None = None,
     ) -> bool:
         now = time.time()
-        with self._connect() as db:
+        with closing(self._connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 """
                 SELECT attempts, max_attempts FROM jobs
@@ -212,6 +213,7 @@ class JobQueue:
                 (job_id, worker_id),
             ).fetchone()
             if row is None:
+                db.rollback()
                 return False
             terminal = row["attempts"] >= row["max_attempts"]
             delay = (
@@ -219,13 +221,13 @@ class JobQueue:
                 if retry_delay is None
                 else max(0.0, retry_delay)
             )
-            db.execute(
+            changed = db.execute(
                 """
                 UPDATE jobs
                 SET status = ?, available_at = ?, worker_id = NULL,
                     locked_at = NULL, lease_until = NULL, last_error = ?,
                     updated_at = ?
-                WHERE id = ?
+                WHERE id = ? AND status = 'running' AND worker_id = ?
                 """,
                 (
                     "failed" if terminal else "pending",
@@ -233,12 +235,14 @@ class JobQueue:
                     str(error)[:4000],
                     now,
                     job_id,
+                    worker_id,
                 ),
-            )
-        return True
+            ).rowcount
+            db.commit()
+        return changed == 1
 
     def get(self, job_id: str) -> dict[str, Any] | None:
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             row = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         return self._decode(row) if row else None
 
@@ -247,7 +251,7 @@ class JobQueue:
             raise ValueError("invalid job status")
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             if status:
                 rows = db.execute(
                     "SELECT * FROM jobs WHERE status = ? ORDER BY created_at DESC LIMIT ?",
@@ -260,7 +264,7 @@ class JobQueue:
         return [self._decode(row) for row in rows]
 
     def counts(self) -> dict[str, int]:
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             rows = db.execute("SELECT status, COUNT(*) AS total FROM jobs GROUP BY status")
             counts = {name: 0 for name in ("pending", "running", "succeeded", "failed")}
             counts.update({row["status"]: row["total"] for row in rows})
