@@ -176,7 +176,11 @@ def delivery_event_snapshot(
                     "attempt": int(row["attempt"]),
                     "will_retry": bool(row["will_retry"]),
                     "retry_after_seconds": row["retry_after_seconds"],
-                    "provider_message_id": row["provider_message_id"] if "provider_message_id" in row.keys() else None,
+                    "provider_message_id": (
+                        row["provider_message_id"]
+                        if "provider_message_id" in row.keys()
+                        else None
+                    ),
                     "created_at": float(row["created_at"]),
                 }
                 for row in db.execute(
