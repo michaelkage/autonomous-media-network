@@ -3,7 +3,10 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pytest
+
 from amn.jobs import JobQueue
+from amn.pipeline import main
 
 
 def test_enqueue_claim_and_complete_round_trip(tmp_path: Path) -> None:
@@ -112,8 +115,6 @@ def test_concurrent_workers_cannot_claim_same_job(tmp_path: Path) -> None:
 
 def test_queue_validates_inputs_and_list_filters(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
-    import pytest
-
     with pytest.raises(ValueError):
         queue.enqueue("", {})
     with pytest.raises(ValueError):
@@ -125,3 +126,15 @@ def test_queue_validates_inputs_and_list_filters(tmp_path: Path) -> None:
 
     job_id = queue.enqueue("pipeline")
     assert queue.list(status="pending")[0]["id"] == job_id
+
+
+
+def test_jobs_cli_enqueues_and_worker_completes_pipeline(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "inbox").mkdir()
+    monkeypatch.setenv("AMN_WATERMARK_TEXT", "@amn")
+
+    assert main(["jobs", "enqueue", "--kind", "pipeline", "--root", str(tmp_path)]) == 0
+    assert main(["jobs", "worker", "--once", "--root", str(tmp_path)]) == 0
+
+    queue = JobQueue(tmp_path / "build" / "jobs.sqlite3")
+    assert queue.counts()["succeeded"] == 1
