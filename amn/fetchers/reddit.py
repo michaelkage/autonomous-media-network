@@ -33,7 +33,7 @@ class RedditFetcher:
                 params={"limit": limit}, timeout=(5, 20))
             response.raise_for_status()
             posts = response.json().get("data", {}).get("children", [])
-        except (requests.RequestException, json.JSONDecodeError, ValueError) as exc:
+        except (requests.RequestException, ValueError) as exc:
             print(f"failed to reach reddit: {exc}")
             return 0
 
