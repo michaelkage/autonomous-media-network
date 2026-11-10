@@ -9,12 +9,29 @@
       "enabled": false,
       "chat_id": "@your_channel",
       "token_env": "TELEGRAM_BOT_TOKEN"
+    },
+    {
+      "id": "instagram-main",
+      "platform": "instagram",
+      "enabled": false,
+      "instagram_user_id": "YOUR_IG_PROFESSIONAL_ACCOUNT_ID",
+      "public_base_url": "https://media.example.com/outbox",
+      "token_env": "INSTAGRAM_ACCESS_TOKEN"
+    },
+    {
+      "id": "tiktok-main",
+      "platform": "tiktok",
+      "enabled": false,
+      "public_base_url": "https://media.example.com/outbox",
+      "privacy_level": "SELF_ONLY",
+      "direct_post_enabled": false,
+      "token_env": "TIKTOK_ACCESS_TOKEN"
     }
   ],
   "routes": {
     "default": [],
-    "landscape": ["telegram-main"],
-    "architecture": ["telegram-main"]
+    "landscape": ["telegram-main", "instagram-main", "tiktok-main"],
+    "architecture": ["telegram-main", "instagram-main"]
   },
   "thresholds": {
     "min_likes": 500,
