@@ -49,6 +49,8 @@ def record_delivery_event(
         "published",
         "attempt_failed",
         "retry_scheduled",
+        "manual_reconciliation_published",
+        "manual_reconciliation_not_published",
     }:
         raise ValueError(f"unsupported delivery event type: {event_type}")
     if isinstance(attempt, bool) or attempt < 1:
