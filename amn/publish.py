@@ -33,7 +33,7 @@ class RateLimiter:
     def retry_delay(self, attempt: int, retry_after: float | None = None) -> float:
         if retry_after is not None:
             return min(self.max_backoff, max(0.0, retry_after))
-        return min(self.max_backoff, 2 ** attempt + random.random())
+        return min(self.max_backoff, 2**attempt + random.random())
 
 
 class Publisher(ABC):
@@ -92,9 +92,15 @@ def _save_state(path: Path, state: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
-def publish_manifest(manifest_path: Path, publisher: Publisher, *,
-                     root: Path | None = None, platform: str | None = None,
-                     state_path: Path | None = None, retries: int = 3) -> int:
+def publish_manifest(
+    manifest_path: Path,
+    publisher: Publisher,
+    *,
+    root: Path | None = None,
+    platform: str | None = None,
+    state_path: Path | None = None,
+    retries: int = 3,
+) -> int:
     """Publish eligible manifest records once per platform and content digest.
 
     State is a local JSON file, not a database. A failed item remains retryable.
