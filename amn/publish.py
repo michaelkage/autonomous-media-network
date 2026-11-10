@@ -8,8 +8,8 @@ import random
 import sqlite3
 import threading
 import time
-from contextlib import contextmanager
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -39,7 +39,7 @@ def _cross_process_publish_lock(state_file: Path, platform: str):
     """
     state_file = state_file.resolve()
     state_file.parent.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(f"{state_file}::{platform}".encode("utf-8")).hexdigest()[:20]
+    key = hashlib.sha256(f"{state_file}::{platform}".encode()).hexdigest()[:20]
     lock_path = state_file.parent / f".{state_file.name}.{key}.lock.sqlite3"
     connection = sqlite3.connect(lock_path, timeout=300)
     try:
