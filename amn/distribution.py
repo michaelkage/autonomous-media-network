@@ -54,7 +54,12 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         for field in target:
             normalized = field.lower()
             if normalized in {
-                "token", "access_token", "refresh_token", "password", "secret", "client_secret"
+                "token",
+                "access_token",
+                "refresh_token",
+                "password",
+                "secret",
+                "client_secret",
             }:
                 raise ValueError(
                     f"store credentials in environment variables, not config ({field})"
@@ -94,8 +99,11 @@ def targets_for(item: dict[str, Any], config: dict[str, Any]) -> list[dict[str, 
     target_ids: set[str] = set(routes.get("default", []))
     for category in categories:
         target_ids.update(routes.get(category, []))
-    return [target for target in config.get("targets", [])
-            if target.get("enabled", True) and target.get("id") in target_ids]
+    return [
+        target
+        for target in config.get("targets", [])
+        if target.get("enabled", True) and target.get("id") in target_ids
+    ]
 
 
 def publish_routed_manifest(root: Path) -> dict[str, int]:
@@ -151,8 +159,11 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
                 )
                 continue
             publisher = TikTokPublisher(
-                token, str(media_url), str(privacy),
-                direct_post_enabled=target.get("direct_post_enabled", False))
+                token,
+                str(media_url),
+                str(privacy),
+                direct_post_enabled=target.get("direct_post_enabled", False),
+            )
         else:
             print(f"skipping {target['id']}: unsupported platform {platform}")
             continue
@@ -165,7 +176,8 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
         temporary_manifest.write_text(json.dumps({"passed": selected}), encoding="utf-8")
         try:
             totals[target["id"]] = publish_manifest(
-                temporary_manifest, publisher, root=root, platform=target["id"])
+                temporary_manifest, publisher, root=root, platform=target["id"]
+            )
             if platform == "telegram" and totals[target["id"]]:
                 publisher.publish_document(temporary_manifest)
         finally:
