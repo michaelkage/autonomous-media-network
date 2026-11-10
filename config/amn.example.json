@@ -11,6 +11,15 @@
       "token_env": "TELEGRAM_BOT_TOKEN"
     },
     {
+      "id": "reddit-main",
+      "platform": "reddit",
+      "enabled": false,
+      "subreddit": "YOUR_SUBREDDIT",
+      "public_base_url": "https://media.example.com/outbox",
+      "token_env": "REDDIT_USER_ACCESS_TOKEN",
+      "user_agent_env": "AMN_REDDIT_USER_AGENT"
+    },
+    {
       "id": "x-main",
       "platform": "x",
       "enabled": false,
@@ -44,10 +53,10 @@
   "storage": null,
   "routes": {
     "default": [],
-    "landscape": ["telegram-main", "facebook-main", "x-main", "instagram-main", "tiktok-main"],
+    "landscape": ["telegram-main", "facebook-main", "x-main", "reddit-main", "instagram-main", "tiktok-main"],
     "architecture": ["telegram-main", "instagram-main"],
-    "earthporn": ["telegram-main", "instagram-main"],
-    "wallpapers": ["telegram-main", "tiktok-main"]
+    "earthporn": ["telegram-main", "reddit-main", "instagram-main"],
+    "wallpapers": ["telegram-main", "reddit-main", "tiktok-main"]
   },
   "thresholds": {
     "min_likes": 500,
