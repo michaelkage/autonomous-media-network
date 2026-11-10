@@ -43,10 +43,10 @@ def test_reddit_submits_link_post_and_retains_submission_id(tmp_path: Path) -> N
     assert call.args[0] == "https://oauth.reddit.com/api/submit"
     assert call.kwargs["data"] == {
         "sr": "earthporn",
+        "api_type": "json",
         "kind": "link",
         "title": "A beautiful landscape",
         "url": "https://cdn.example.com/amn/outbox/asset%20photo.jpg",
-        "resubmit": "false",
         "sendreplies": "true",
     }
     assert call.kwargs["headers"]["Authorization"] == "Bearer reddit-user-token"
