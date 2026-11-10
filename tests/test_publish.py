@@ -104,9 +104,7 @@ class TestPublishManifest:
         assert publish_manifest(path, MockPublisher()) == 0
 
 
-    def test_concurrent_processes_publish_each_delivery_once(
-        self, manifest: Path, tmp_path: Path
-    ):
+    def test_concurrent_processes_publish_each_delivery_once(self, manifest: Path, tmp_path: Path):
         context = multiprocessing.get_context("spawn")
         start_event = context.Event()
         marker = tmp_path / "published.txt"
