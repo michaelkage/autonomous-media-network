@@ -14,7 +14,7 @@ ruff format --check .
 ## Pipeline
 
 ```bash
-REDDIT_USER_ACCESS_TOKEN="..." AMN_REDDIT_USER_AGENT="linux:amn:v0.2.0 (by /u/your_username)" \\
+REDDIT_USER_ACCESS_TOKEN="..." AMN_REDDIT_USER_AGENT="linux:amn:v0.2.0 (by /u/your_username)" \
   amn fetch --source reddit --query earthporn --limit 10
 AMN_WATERMARK_TEXT="@yourhandle" amn run --root .
 amn run --root . --dry-run
