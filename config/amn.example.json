@@ -31,7 +31,9 @@
   "routes": {
     "default": [],
     "landscape": ["telegram-main", "instagram-main", "tiktok-main"],
-    "architecture": ["telegram-main", "instagram-main"]
+    "architecture": ["telegram-main", "instagram-main"],
+    "earthporn": ["telegram-main", "instagram-main"],
+    "wallpapers": ["telegram-main", "tiktok-main"]
   },
   "thresholds": {
     "min_likes": 500,
