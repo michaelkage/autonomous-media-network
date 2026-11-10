@@ -27,66 +27,103 @@ def load_config(path: Path) -> dict[str, Any]:
 
 
 def validate_config(data: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        raise ValueError("AMN config must be a JSON object")
+
     sources = data.get("sources", {})
     if not isinstance(sources, dict):
         raise ValueError("sources must be an object")
     reddit_sources = sources.get("reddit", [])
-    if not isinstance(reddit_sources, list) or any(
-        not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_]{2,21}", name)
-        for name in reddit_sources
+    if (
+        not isinstance(reddit_sources, list)
+        or any(
+            not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_]{2,21}", name)
+            for name in reddit_sources
+        )
+        or len(set(reddit_sources)) != len(reddit_sources)
     ):
-        raise ValueError("sources.reddit must be an array of valid subreddit names")
-    if not isinstance(data.get("targets", []), list):
+        raise ValueError("sources.reddit must contain unique valid subreddit names")
+
+    targets = data.get("targets", [])
+    if not isinstance(targets, list):
         raise ValueError("targets must be an array")
-    if not isinstance(data.get("routes", {}), dict):
+    routes = data.get("routes", {})
+    if not isinstance(routes, dict):
         raise ValueError("routes must be an object")
     thresholds = data.get("thresholds", {})
     if not isinstance(thresholds, dict):
         raise ValueError("thresholds must be an object")
-    likes, distance = int(thresholds.get("min_likes", 500)), int(thresholds.get("max_distance", 5))
-    if likes < 0 or not 0 <= distance <= 64:
-        raise ValueError("min_likes must be >= 0 and max_distance must be between 0 and 64")
+
+    likes = thresholds.get("min_likes", 500)
+    distance = thresholds.get("max_distance", 5)
+    if (
+        isinstance(likes, bool)
+        or not isinstance(likes, int)
+        or isinstance(distance, bool)
+        or not isinstance(distance, int)
+        or likes < 0
+        or not 0 <= distance <= 64
+    ):
+        raise ValueError("min_likes must be a non-negative integer and max_distance an integer from 0 to 64")
+
+    allowed_fields = {
+        "id", "platform", "enabled", "token_env", "handle_env", "password_env",
+        "chat_id", "instagram_user_id", "public_base_url", "privacy_level",
+        "direct_post_enabled",
+    }
+    supported_platforms = {"telegram", "bluesky", "instagram", "tiktok"}
     ids: set[str] = set()
-    for target in data.get("targets", []):
-        if (
-            not isinstance(target, dict)
-            or not isinstance(target.get("id"), str)
-            or not target.get("id")
-            or not isinstance(target.get("platform"), str)
-            or not target.get("platform")
-        ):
-            raise ValueError("each target requires string id and platform fields")
-        target_id = target["id"]
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", target_id):
-            raise ValueError(
-                "target id must contain only letters, numbers, underscores, and hyphens"
-            )
+    for target in targets:
+        if not isinstance(target, dict):
+            raise ValueError("each target must be an object")
+        if set(target) - allowed_fields:
+            raise ValueError(f"unsupported target fields: {sorted(set(target) - allowed_fields)}")
+        target_id, platform = target.get("id"), target.get("platform")
+        if not isinstance(target_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", target_id):
+            raise ValueError("target id must contain only letters, numbers, underscores, and hyphens")
+        if not isinstance(platform, str) or platform.lower() not in supported_platforms:
+            raise ValueError(f"target {target_id!r} has an unsupported platform")
         if target_id in ids:
             raise ValueError(f"duplicate target id: {target_id}")
         ids.add(target_id)
-        for field in target:
-            normalized = field.lower()
-            if normalized in {
-                "token",
-                "access_token",
-                "refresh_token",
-                "password",
-                "secret",
-                "client_secret",
-            }:
-                raise ValueError(
-                    f"store credentials in environment variables, not config ({field})"
-                )
+
+        if "enabled" in target and not isinstance(target["enabled"], bool):
+            raise ValueError(f"target {target_id!r}: enabled must be boolean")
+        if "direct_post_enabled" in target and not isinstance(target["direct_post_enabled"], bool):
+            raise ValueError(f"target {target_id!r}: direct_post_enabled must be boolean")
         for env_key in ("token_env", "handle_env", "password_env"):
-            if target.get(env_key) and not str(target[env_key]).isidentifier():
-                raise ValueError(f"{env_key} must be an environment variable name")
-    for route, target_ids in data.get("routes", {}).items():
+            value = target.get(env_key)
+            if value is not None and (
+                not isinstance(value, str) or not value.isidentifier()
+            ):
+                raise ValueError(f"target {target_id!r}: {env_key} must be an environment variable name")
+        for string_key in (
+            "chat_id", "instagram_user_id", "public_base_url", "privacy_level"
+        ):
+            value = target.get(string_key)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"target {target_id!r}: {string_key} must be a non-empty string")
+
+        if platform.lower() in {"instagram", "tiktok"}:
+            from urllib.parse import urlparse
+
+            media_url = target.get("public_base_url", "")
+            parsed = urlparse(media_url)
+            if parsed.scheme != "https" or not parsed.netloc:
+                raise ValueError(f"target {target_id!r}: public_base_url must use HTTPS")
+        if platform.lower() == "tiktok" and "direct_post_enabled" in target:
+            if not target["direct_post_enabled"]:
+                # Draft/inbox mode is not implemented; don't advertise this as a live target.
+                raise ValueError(f"target {target_id!r}: TikTok direct posting must be explicitly enabled")
+
+    for route, target_ids in routes.items():
+        if not isinstance(route, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", route):
+            raise ValueError("route names must contain only letters, numbers, underscores, and hyphens")
         if not isinstance(target_ids, list) or any(
-            target_id not in ids for target_id in target_ids
+            not isinstance(target_id, str) or target_id not in ids for target_id in target_ids
         ):
             raise ValueError(f"route {route!r} references an unknown target")
     return data
-
 
 def save_config(path: Path, data: dict[str, Any]) -> None:
     validate_config(data)
@@ -163,6 +200,9 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
                 continue
             publisher = InstagramPublisher(token, str(user_id), str(media_url))
         elif platform == "tiktok":
+            if not target.get("direct_post_enabled", False):
+                print(f"skipping {target['id']}: TikTok direct posting is not enabled")
+                continue
             token = os.environ.get(target.get("token_env", "TIKTOK_ACCESS_TOKEN"))
             media_url = target.get("public_base_url")
             privacy = target.get("privacy_level")
