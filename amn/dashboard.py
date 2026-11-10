@@ -146,11 +146,15 @@ def create_app(root: Path = ROOT) -> Any:
         return result
 
     @app.get("/api/deliveries")
-    def delivery_history(limit: int = 100) -> dict[str, Any]:
+    def delivery_history(limit: int = 100, stale_after_seconds: int = 900) -> dict[str, Any]:
         from .delivery_events import delivery_event_snapshot
 
         try:
-            return delivery_event_snapshot(root / "build" / "jobs.sqlite3", limit=limit)
+            return delivery_event_snapshot(
+                root / "build" / "jobs.sqlite3",
+                limit=limit,
+                stale_after_seconds=stale_after_seconds,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
