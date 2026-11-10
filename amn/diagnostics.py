@@ -34,31 +34,21 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     manifest_path = root / "build" / "manifest.json"
     try:
-        manifest = (
-            json.loads(manifest_path.read_text(encoding="utf-8"))
-            if manifest_path.is_file()
-            else {}
-        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
         passed = manifest.get("passed", [])
     except (OSError, ValueError, AttributeError):
         passed = []
-        results.append(
-            _check("workspace", "manifest", False, "manifest is unreadable")
-        )
+        results.append(_check("workspace", "manifest", False, "manifest is unreadable"))
 
     for target in config.get("targets", []):
         target_id = target["id"]
         if not target.get("enabled", True):
-            results.append(
-                _check(target_id, "configuration", True, "target disabled; skipped")
-            )
+            results.append(_check(target_id, "configuration", True, "target disabled; skipped"))
             continue
 
         platform = target["platform"].lower()
         if platform == "telegram":
-            token = os.environ.get(
-                target.get("token_env", "TELEGRAM_BOT_TOKEN")
-            )
+            token = os.environ.get(target.get("token_env", "TELEGRAM_BOT_TOKEN"))
             chat_id = target.get("chat_id") or os.environ.get("TELEGRAM_CHAT_ID")
             if not token or not chat_id:
                 results.append(
@@ -103,9 +93,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                 )
 
         elif platform == "instagram":
-            token = os.environ.get(
-                target.get("token_env", "INSTAGRAM_ACCESS_TOKEN")
-            )
+            token = os.environ.get(target.get("token_env", "INSTAGRAM_ACCESS_TOKEN"))
             user_id = target.get("instagram_user_id")
             if not token or not user_id:
                 results.append(
@@ -146,9 +134,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                 )
 
         elif platform == "tiktok":
-            token = os.environ.get(
-                target.get("token_env", "TIKTOK_ACCESS_TOKEN")
-            )
+            token = os.environ.get(target.get("token_env", "TIKTOK_ACCESS_TOKEN"))
             if not token:
                 results.append(
                     _check(
@@ -180,10 +166,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                     detail = f"privacy level unavailable; account options: {options}"
                     results.append(_check(target_id, "account", False, detail))
                 else:
-                    detail = (
-                        "creator access accepted; configured privacy level "
-                        f"{privacy} is available"
-                    )
+                    detail = f"creator access accepted; configured privacy level {privacy} is available"
                     results.append(_check(target_id, "account", True, detail))
             except (
                 requests.RequestException,
@@ -202,9 +185,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
 
         elif platform == "bluesky":
             handle = os.environ.get(target.get("handle_env", "BLUESKY_HANDLE"))
-            password = os.environ.get(
-                target.get("password_env", "BLUESKY_APP_PASSWORD")
-            )
+            password = os.environ.get(target.get("password_env", "BLUESKY_APP_PASSWORD"))
             if not handle or not password:
                 results.append(
                     _check(
@@ -220,9 +201,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
 
                 bluesky = Client()
                 bluesky.login(handle, password)
-                results.append(
-                    _check(target_id, "account", True, "Bluesky login accepted")
-                )
+                results.append(_check(target_id, "account", True, "Bluesky login accepted"))
             except Exception:
                 results.append(
                     _check(
