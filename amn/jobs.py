@@ -7,6 +7,7 @@ safe across processes; leases allow another worker to recover jobs after crashes
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import time
 import uuid
@@ -300,8 +301,15 @@ class JobQueue:
             raise ValueError("job kind must be a non-empty string of at most 64 characters")
         if payload is not None and not isinstance(payload, dict):
             raise ValueError("schedule payload must be an object")
-        if isinstance(interval_seconds, bool) or interval_seconds <= 0:
-            raise ValueError("interval_seconds must be positive")
+        if isinstance(interval_seconds, bool):
+            raise ValueError("interval_seconds must be a finite positive number")
+        try:
+            interval = float(interval_seconds)
+            first_run = time.time() if first_run_at is None else float(first_run_at)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("schedule timing values must be numbers") from exc
+        if not math.isfinite(interval) or interval <= 0 or not math.isfinite(first_run):
+            raise ValueError("schedule timing values must be finite and interval positive")
         now = time.time()
         encoded = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"))
         with closing(self._connect()) as db:
@@ -317,8 +325,8 @@ class JobQueue:
                         schedule_id.strip(),
                         kind.strip(),
                         encoded,
-                        float(interval_seconds),
-                        now if first_run_at is None else float(first_run_at),
+                        interval,
+                        first_run,
                         now,
                         now,
                     ),
@@ -352,6 +360,8 @@ class JobQueue:
 
     def enqueue_due_schedules(self, *, now: float | None = None, limit: int = 100) -> int:
         current = time.time() if now is None else float(now)
+        if not math.isfinite(current):
+            raise ValueError("now must be finite")
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
         enqueued = 0
