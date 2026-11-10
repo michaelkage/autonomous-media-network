@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+from amn.delivery_events import record_delivery_event
+from amn.jobs import JobQueue
+from amn.operator_alerts import check_operator_alerts, operator_alert_snapshot
+
+
+def test_failed_job_alert_is_sent_once_then_resolved(tmp_path: Path, monkeypatch) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    queue = JobQueue(database)
+    job_id = queue.enqueue("publish", max_attempts=1)
+    assert queue.claim("worker") is not None
+    assert queue.fail(job_id, "worker", "provider failure", retry_delay=0)
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_send(token: str, chat_id: str, message: str, timeout: float) -> None:
+        calls.append((chat_id, message))
+
+    monkeypatch.setattr("amn.operator_alerts._send_telegram", fake_send)
+
+    first = check_operator_alerts(
+        database, bot_token="test-token", chat_id="@ops", now=1000
+    )
+    second = check_operator_alerts(
+        database, bot_token="test-token", chat_id="@ops", now=1100
+    )
+
+    assert first["active"] == 1
+    assert first["sent"] == 1
+    assert second["sent"] == 0
+    assert len(calls) == 1
+    assert "provider failure" not in calls[0][1]
+    assert operator_alert_snapshot(database)["counts"]["active"] == 1
+
+    with sqlite3.connect(database) as db:
+        db.execute("UPDATE jobs SET status = 'succeeded' WHERE id = ?", (job_id,))
+
+    resolved = check_operator_alerts(
+        database, bot_token="test-token", chat_id="@ops", now=1200
+    )
+    assert resolved["active"] == 0
+    assert resolved["resolved"] == 1
+    assert operator_alert_snapshot(database)["counts"]["resolved"] == 1
+
+
+def test_repeated_delivery_failures_create_one_alert(tmp_path: Path, monkeypatch) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    for attempt in range(1, 4):
+        record_delivery_event(
+            database,
+            platform="telegram",
+            delivery_key="private-delivery-key",
+            output="outbox/image.jpg",
+            event_type="attempt_failed",
+            attempt=attempt,
+        )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "amn.operator_alerts._send_telegram",
+        lambda token, chat, message, timeout: calls.append(message),
+    )
+
+    result = check_operator_alerts(
+        database, bot_token="token", chat_id="@ops", now=2000
+    )
+
+    assert result["active"] == 1
+    assert result["sent"] == 1
+    assert len(calls) == 1
+    assert "telegram" in calls[0]
+    assert "private-delivery-key" not in calls[0]
+
+
+def test_stalled_provider_operations_are_alerted(tmp_path: Path, monkeypatch) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    database.parent.mkdir()
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "CREATE TABLE tiktok_publish_operations "
+            "(publish_id TEXT PRIMARY KEY, status TEXT, updated_at REAL)"
+        )
+        db.execute(
+            "INSERT INTO tiktok_publish_operations VALUES ('publish-123456789012345', 'pending', 1)"
+        )
+        db.execute(
+            "CREATE TABLE instagram_publish_operations "
+            "(operation_key TEXT PRIMARY KEY, container_id TEXT, status TEXT, updated_at REAL)"
+        )
+        db.execute(
+            "INSERT INTO instagram_publish_operations VALUES "
+            "('operation-123456789012345', 'container-123456789012345', 'publishing', 1)"
+        )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "amn.operator_alerts._send_telegram",
+        lambda token, chat, message, timeout: calls.append(message),
+    )
+
+    result = check_operator_alerts(
+        database,
+        bot_token="token",
+        chat_id="@ops",
+        stale_after_seconds=60,
+        now=1000,
+    )
+
+    assert result["active"] == 2
+    assert result["sent"] == 2
+    assert any("TikTok" in message for message in calls)
+    assert any("manual reconciliation" in message for message in calls)
+
+
+def test_telegram_notification_failure_is_non_fatal_and_sanitized(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    queue = JobQueue(database)
+    job_id = queue.enqueue("pipeline", max_attempts=1)
+    assert queue.claim("worker") is not None
+    assert queue.fail(job_id, "worker", "do not expose this error", retry_delay=0)
+
+    def fail_send(*args, **kwargs) -> None:
+        raise RuntimeError("request failed with token=secret-value")
+
+    monkeypatch.setattr("amn.operator_alerts._send_telegram", fail_send)
+    result = check_operator_alerts(
+        database, bot_token="secret-value", chat_id="@ops", now=3000
+    )
+
+    assert result["failed"] == 1
+    alert = operator_alert_snapshot(database)["recent"][0]
+    assert alert["last_error"] == "notification failed (RuntimeError)"
+    assert "secret-value" not in str(alert)
+    assert "do not expose this error" not in str(alert)
