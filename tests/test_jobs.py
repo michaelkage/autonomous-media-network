@@ -222,7 +222,6 @@ def test_schedule_cli_add_list_tick_and_disable(tmp_path: Path, capsys) -> None:
     assert main(["jobs", "schedule", "disable", "--id", "daily-pipeline", "--root", root]) == 0
 
 
-
 def test_concurrent_schedule_ticks_enqueue_once(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
     queue.add_schedule("every-minute", "pipeline", {}, 60, first_run_at=100)
