@@ -310,7 +310,8 @@ def main(argv: list[str] | None = None) -> int:
             media_url = os.environ.get("AMN_PUBLIC_MEDIA_URL")
             if not token or not user_id or not media_url:
                 print(
-                    "error: INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_USER_ID and AMN_PUBLIC_MEDIA_URL required",
+                    "error: INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_USER_ID and "
+                    "AMN_PUBLIC_MEDIA_URL required",
                     file=sys.stderr,
                 )
                 return 1
@@ -321,7 +322,8 @@ def main(argv: list[str] | None = None) -> int:
             privacy = os.environ.get("TIKTOK_PRIVACY_LEVEL")
             if not token or not media_url or not privacy:
                 print(
-                    "error: TIKTOK_ACCESS_TOKEN, AMN_PUBLIC_MEDIA_URL and TIKTOK_PRIVACY_LEVEL required",
+                    "error: TIKTOK_ACCESS_TOKEN, AMN_PUBLIC_MEDIA_URL and "
+                    "TIKTOK_PRIVACY_LEVEL required",
                     file=sys.stderr,
                 )
                 return 1
