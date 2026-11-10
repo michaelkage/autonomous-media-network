@@ -83,13 +83,28 @@ def test_tiktok_webhook_verifies_signature_and_deduplicates(tmp_path: Path) -> N
         ).fetchone()[0]
     assert status == "complete"
 
+    inbox_body = _payload("post.publish.inbox_delivered", "publish-123")
+    inbox_response = client.post(
+        "/webhooks/tiktok",
+        content=inbox_body,
+        headers=_signed_headers(inbox_body, "test-secret"),
+    )
+    assert inbox_response.status_code == 200
+    with sqlite3.connect(database) as db:
+        status = db.execute(
+            "SELECT status FROM tiktok_publish_operations WHERE publish_id = ?",
+            ("publish-123",),
+        ).fetchone()[0]
+    assert status == "complete"
+
     events = delivery_event_snapshot(database)
     assert events["counts"] == {
         "provider_webhook_complete": 1,
         "provider_webhook_unavailable": 1,
+        "provider_webhook_inbox_delivered": 1,
     }
     assert events["recent"][0]["output"] == "publish_id:publish-123"
-    assert events["webhooks"]["received"] == 2
+    assert events["webhooks"]["received"] == 3
     assert events["webhooks"]["last_received_at"] is not None
     assert events["webhooks"]["latest_latency_seconds"] is not None
     assert events["webhooks"]["latest_latency_seconds"] >= 0
