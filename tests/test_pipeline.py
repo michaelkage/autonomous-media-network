@@ -288,7 +288,6 @@ def test_duplicate_rejection_reports_actual_dhash_distance(project, add_asset):
     assert record == {}
 
 
-
 def test_pipeline_recovers_checkpoint_before_retiring_source(project, add_asset):
     import hashlib
 
