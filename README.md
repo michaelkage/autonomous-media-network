@@ -19,6 +19,7 @@ AMN_WATERMARK_TEXT="@yourhandle" amn run --root .
 amn run --root . --dry-run
 amn publish --platform mock --root .
 amn publish --routed --root .
+amn doctor --root .
 ```
 
 Production runs fail closed when `AMN_WATERMARK_TEXT` is missing. When an output basename already exists, AMN appends a source digest instead of overwriting it. Writes are atomic, and duplicate-database corruption is surfaced rather than silently disabling protection.
@@ -44,7 +45,7 @@ TIKTOK_ACCESS_TOKEN="..." TIKTOK_PRIVACY_LEVEL="SELF_ONLY" TIKTOK_DIRECT_POST_EN
 
 Publishing resolves manifest paths against the project root and records per-platform delivery state in `build/publish-state.json`. Writes are atomic, same-target deliveries are serialized within the process, and rate limiters are shared per target. Adapters honor numeric `Retry-After` responses where the provider supplies them. Failed items remain retryable; successful items are skipped on subsequent runs.
 
-The public media URL must serve the exact outbox filenames; AMN does not expose your local filesystem to Meta or TikTok. Instagram publishing uses Meta's two-step container flow and requires a professional account plus a publicly reachable JPEG URL. TikTok photo publishing uses the current PHOTO content-init endpoint, requires a verified public URL domain, creator privacy-level validation, and the `video.publish` scope. TikTok's API also restricts unaudited apps to private visibility. Its creator-info response must be reviewed and the configured privacy option must match the account's returned options. Configure these targets disabled until the app review, OAuth scopes, verified media host, and account-level tests are complete. Static images use TikTok's photo API; no fake looping video conversion is needed. See [Meta content publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing) and [TikTok Direct Post](https://developers.tiktok.com/docs/en/content-posting-api-get-started).
+Run `amn doctor --root .` before enabling routed publishing. It performs read-only credential/account checks for enabled providers and verifies that one passed media asset is publicly reachable for Instagram/TikTok. It never publishes content and reports sanitized failures. The public media URL must serve the exact outbox filenames; AMN does not expose your local filesystem to Meta or TikTok. Instagram publishing uses Meta's two-step container flow and requires a professional account plus a publicly reachable JPEG URL. TikTok photo publishing uses the current PHOTO content-init endpoint, requires a verified public URL domain, creator privacy-level validation, and the `video.publish` scope. TikTok's API also restricts unaudited apps to private visibility. Its creator-info response must be reviewed and the configured privacy option must match the account's returned options. Configure these targets disabled until the app review, OAuth scopes, verified media host, and account-level tests are complete. Static images use TikTok's photo API; no fake looping video conversion is needed. See [Meta content publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing) and [TikTok Direct Post](https://developers.tiktok.com/docs/en/content-posting-api-get-started).
 
 ## Diagnostics dashboard
 
