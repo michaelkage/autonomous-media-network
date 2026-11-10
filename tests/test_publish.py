@@ -144,7 +144,9 @@ class TestBlueskyPublisher:
         assert issubclass(BlueskyPublisher, Publisher)
 
 
-def test_delivery_journal_records_success_without_caption_or_secrets(manifest: Path, tmp_path: Path) -> None:
+def test_delivery_journal_records_success_without_caption_or_secrets(
+    manifest: Path, tmp_path: Path
+) -> None:
     from amn.delivery_events import delivery_event_snapshot
 
     class Recording(Publisher):
