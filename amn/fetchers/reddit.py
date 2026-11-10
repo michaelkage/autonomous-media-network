@@ -16,9 +16,7 @@ _MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
 
 class RedditFetcher:
-    def __init__(
-        self, user_agent: str = "amn-fetcher-v1", access_token: str | None = None
-    ) -> None:
+    def __init__(self, user_agent: str = "amn-fetcher-v1", access_token: str | None = None) -> None:
         self.user_agent = user_agent
         self.session = requests.Session()
         headers = {"User-Agent": user_agent}
