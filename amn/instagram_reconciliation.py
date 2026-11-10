@@ -9,6 +9,8 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from .delivery_events import delivery_id_for
+
 __all__ = ["list_instagram_reconciliation", "resolve_instagram_operation"]
 
 
@@ -108,7 +110,9 @@ def resolve_instagram_operation(
         db.execute("BEGIN IMMEDIATE")
         try:
             operation = db.execute(
-                "SELECT container_id, status FROM instagram_publish_operations "
+                "SELECT container_id, status, "
+                + ("output" if "output" in {row[1] for row in db.execute("PRAGMA table_info(instagram_publish_operations)")} else "NULL")
+                + " AS output FROM instagram_publish_operations "
                 "WHERE operation_key = ?",
                 (operation_key.strip(),),
             ).fetchone()
@@ -125,6 +129,7 @@ def resolve_instagram_operation(
             ).rowcount
             if changed != 1:
                 raise ValueError("Instagram operation changed during reconciliation")
+            resolved_at = time.time()
             db.execute(
                 """
                 INSERT INTO instagram_operation_resolutions (
@@ -139,7 +144,39 @@ def resolve_instagram_operation(
                     new_status,
                     actor.strip(),
                     note.strip(),
-                    time.time(),
+                    resolved_at,
+                ),
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS delivery_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    delivery_id TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    output TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    attempt INTEGER NOT NULL,
+                    will_retry INTEGER NOT NULL DEFAULT 0,
+                    retry_after_seconds REAL,
+                    created_at REAL NOT NULL
+                )
+                """
+            )
+            db.execute(
+                """
+                INSERT INTO delivery_events (
+                    delivery_id, platform, output, event_type, attempt,
+                    will_retry, retry_after_seconds, created_at
+                ) VALUES (?, 'instagram', ?, ?, 1, ?, NULL, ?)
+                """,
+                (
+                    delivery_id_for("instagram", operation_key.strip()),
+                    str(operation["output"]) if operation["output"] else "container:" + str(operation["container_id"]),
+                    "manual_reconciliation_published"
+                    if resolution == "published"
+                    else "manual_reconciliation_not_published",
+                    int(resolution == "not_published"),
+                    resolved_at,
                 ),
             )
             db.commit()
