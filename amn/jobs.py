@@ -10,6 +10,7 @@ import json
 import sqlite3
 import time
 import uuid
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +38,7 @@ class JobQueue:
         return connection
 
     def _initialize(self) -> None:
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             db.execute("PRAGMA journal_mode = WAL")
             db.execute(
                 """
