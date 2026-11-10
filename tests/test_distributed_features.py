@@ -36,10 +36,12 @@ def test_routes_only_explicitly_selected_targets() -> None:
 
 def test_rejects_unsafe_or_duplicate_target_ids() -> None:
     with pytest.raises(ValueError):
-        validate_config({
-            "targets": [{"id": "../escape", "platform": "telegram"}],
-            "routes": {"default": []},
-        })
+        validate_config(
+            {
+                "targets": [{"id": "../escape", "platform": "telegram"}],
+                "routes": {"default": []},
+            }
+        )
 
 
 def test_publish_manifest_resolves_root_and_is_idempotent(tmp_path: Path) -> None:
@@ -49,9 +51,12 @@ def test_publish_manifest_resolves_root_and_is_idempotent(tmp_path: Path) -> Non
     Image.new("RGB", (16, 16), "white").save(image_path)
     (root / "build").mkdir()
     manifest = root / "build" / "manifest.json"
-    manifest.write_text(json.dumps({"passed": [{
-        "output": "outbox/asset.jpg", "caption": "hello", "sha256": "abc123"
-    }]}), encoding="utf-8")
+    manifest.write_text(
+        json.dumps(
+            {"passed": [{"output": "outbox/asset.jpg", "caption": "hello", "sha256": "abc123"}]}
+        ),
+        encoding="utf-8",
+    )
     publisher = RecordingPublisher()
 
     assert publish_manifest(manifest, publisher, root=root, platform="test") == 1
@@ -63,9 +68,10 @@ def test_publish_manifest_rejects_paths_outside_root(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside.jpg"
     Image.new("RGB", (8, 8), "white").save(outside)
     manifest = tmp_path / "manifest.json"
-    manifest.write_text(json.dumps({"passed": [{
-        "output": str(outside), "caption": "nope"
-    }]}), encoding="utf-8")
+    manifest.write_text(
+        json.dumps({"passed": [{"output": str(outside), "caption": "nope"}]}),
+        encoding="utf-8",
+    )
     publisher = RecordingPublisher()
     assert publish_manifest(manifest, publisher, root=tmp_path) == 0
     assert publisher.calls == []
