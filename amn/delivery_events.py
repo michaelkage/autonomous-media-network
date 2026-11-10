@@ -25,7 +25,7 @@ def delivery_id_for(platform: str, delivery_key: str) -> str:
     """Return a stable delivery identifier for a platform and its delivery key."""
     if not platform or not delivery_key:
         raise ValueError("platform and delivery_key are required")
-    material = f"{platform}\\0{delivery_key}"
+    material = f"{platform}\0{delivery_key}"
     return hashlib.sha256(material.encode()).hexdigest()
 
 
