@@ -628,7 +628,12 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return 1
-            publisher = InstagramPublisher(token, user_id, media_url)
+            publisher = InstagramPublisher(
+                token,
+                user_id,
+                media_url,
+                operation_db=args.root / BUILD_DIR / "jobs.sqlite3",
+            )
         else:
             if os.environ.get("TIKTOK_DIRECT_POST_ENABLED") != "true":
                 print(
