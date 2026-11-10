@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from amn.publish import RateLimiter
 from amn.publishers.instagram import InstagramPublisher
@@ -226,3 +227,69 @@ def test_tiktok_completed_operation_is_not_submitted_again(tmp_path: Path) -> No
 
     assert publisher.publish(image, "caption") is True
     publisher.session.post.assert_not_called()
+
+
+def test_instagram_resumes_existing_container_after_restart(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"same-photo-bytes")
+    database = tmp_path / "jobs.sqlite3"
+    first = InstagramPublisher(
+        "recovery-token",
+        "123456",
+        "https://media.example.com/outbox",
+        operation_db=database,
+        max_polls=1,
+    )
+    first.session.post = MagicMock(return_value=_response({"id": "container-1"}))
+    first.session.get = MagicMock(return_value=_response({"status_code": "IN_PROGRESS"}))
+
+    assert first.publish(image, "caption") is False
+    first.session.post.assert_called_once()
+
+    restarted = InstagramPublisher(
+        "recovery-token",
+        "123456",
+        "https://media.example.com/outbox",
+        operation_db=database,
+        max_polls=1,
+    )
+    restarted.session.get = MagicMock(return_value=_response({"status_code": "FINISHED"}))
+    restarted.session.post = MagicMock(return_value=_response({"id": "published-1"}))
+
+    assert restarted.publish(image, "caption") is True
+    restarted.session.post.assert_called_once()
+    assert restarted.session.post.call_args.args[0].endswith("/media_publish")
+    assert restarted.session.post.call_args.kwargs["data"]["creation_id"] == "container-1"
+
+
+def test_instagram_does_not_repeat_ambiguous_media_publish(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"same-photo-bytes")
+    database = tmp_path / "jobs.sqlite3"
+    first = InstagramPublisher(
+        "ambiguous-token",
+        "123456",
+        "https://media.example.com/outbox",
+        operation_db=database,
+        max_polls=1,
+    )
+    first.session.post = MagicMock(
+        side_effect=[_response({"id": "container-ambiguous"}), requests.Timeout("lost response")]
+    )
+    first.session.get = MagicMock(return_value=_response({"status_code": "FINISHED"}))
+
+    assert first.publish(image, "caption") is False
+    assert first.session.post.call_count == 2
+
+    restarted = InstagramPublisher(
+        "ambiguous-token",
+        "123456",
+        "https://media.example.com/outbox",
+        operation_db=database,
+        max_polls=1,
+    )
+    restarted.session.get = MagicMock(return_value=_response({"status_code": "FINISHED"}))
+    restarted.session.post = MagicMock()
+
+    assert restarted.publish(image, "caption") is False
+    restarted.session.post.assert_not_called()
