@@ -52,11 +52,11 @@ def _atomic_write(path: Path, payload: bytes) -> None:
 
 def load_thresholds(root: Path) -> Thresholds:
     pyproject = Path(root) / "pyproject.toml"
-    if not pyproject.is_file():
-        return Thresholds()
-    with pyproject.open("rb") as handle:
-        config = tomllib.load(handle)
-    values = dict(config.get("tool", {}).get("amn", {}))
+    values: dict[str, Any] = {}
+    if pyproject.is_file():
+        with pyproject.open("rb") as handle:
+            config = tomllib.load(handle)
+        values.update(config.get("tool", {}).get("amn", {}))
     dynamic = root / "config" / "amn.json"
     if dynamic.is_file():
         from .distribution import validate_config
