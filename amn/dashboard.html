@@ -17,6 +17,7 @@ textarea{width:100%;font:13px monospace;background:#0b1017;color:#e8edf4}
 <body>
 <h1>Autonomous Media Network</h1>
 <section><h2>Workspace</h2><pre id="status">Loading…</pre></section>
+<section><h2>Provider callback health</h2><pre id="deliveryHealth">Loading…</pre></section>
 <section><h2>Delivery timeline</h2><pre id="deliveries">Loading…</pre></section>
 <section>
 <h2>Curation controls</h2>
@@ -39,8 +40,15 @@ async function load() {
   document.querySelector("#status").textContent =
     JSON.stringify(await statusResponse.json(), null, 2);
   const deliveryResponse = await fetch("/api/deliveries?limit=50");
-  document.querySelector("#deliveries").textContent =
-    JSON.stringify(await deliveryResponse.json(), null, 2);
+  const deliveryData = await deliveryResponse.json();
+  document.querySelector("#deliveryHealth").textContent = JSON.stringify({
+    webhooks: deliveryData.webhooks,
+    tiktok_operations: deliveryData.tiktok_operations
+  }, null, 2);
+  document.querySelector("#deliveries").textContent = JSON.stringify({
+    counts: deliveryData.counts,
+    recent: deliveryData.recent
+  }, null, 2);
   config = await (await fetch("/api/config")).json();
   configEditor.value = JSON.stringify(config, null, 2);
   likes.value = config.thresholds.min_likes ?? 500;
