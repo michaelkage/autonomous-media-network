@@ -46,9 +46,7 @@ def test_tiktok_webhook_verifies_signature_and_deduplicates(tmp_path: Path) -> N
     publisher._save_operation("operation-key", "publish-123", "pending")
 
     client = TestClient(
-        create_webhook_app(
-            tmp_path, client_secret="test-secret", client_key="test-client"
-        ),
+        create_webhook_app(tmp_path, client_secret="test-secret", client_key="test-client"),
         base_url="http://127.0.0.1",
     )
     body = _payload("post.publish.complete", "publish-123")
