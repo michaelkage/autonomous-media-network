@@ -257,8 +257,7 @@ def delivery_event_snapshot(
         }
         if instagram_table:
             rows = db.execute(
-                "SELECT container_id, status, updated_at, output "
-                "FROM instagram_publish_operations"
+                "SELECT container_id, status, updated_at, output FROM instagram_publish_operations"
             ).fetchall()
             stalled_rows: list[dict[str, Any]] = []
             ambiguous_rows: list[dict[str, Any]] = []
