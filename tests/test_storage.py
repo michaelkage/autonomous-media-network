@@ -91,3 +91,66 @@ def test_s3_config_validation_rejects_unknown_fields() -> None:
                 "routes": {},
             }
         )
+
+
+
+def test_routed_instagram_publishing_uploads_to_configured_storage(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+
+    from amn.distribution import publish_routed_manifest
+    from amn.publishers import instagram
+    from amn.storage import S3MediaStorage
+
+    (tmp_path / "config").mkdir()
+    (tmp_path / "build").mkdir()
+    (tmp_path / "outbox").mkdir()
+    image = tmp_path / "outbox" / "asset.jpg"
+    image.write_bytes(b"jpeg")
+    config = {
+        "storage": {"provider": "s3", "bucket": "amn-media"},
+        "targets": [
+            {
+                "id": "ig",
+                "platform": "instagram",
+                "enabled": True,
+                "instagram_user_id": "12345",
+                "public_base_url": "https://cdn.example.com/outbox",
+            }
+        ],
+        "routes": {"default": ["ig"]},
+    }
+    (tmp_path / "config" / "amn.json").write_text(json.dumps(config), encoding="utf-8")
+    (tmp_path / "build" / "manifest.json").write_text(
+        json.dumps({"passed": [{"output": "outbox/asset.jpg", "caption": "caption"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("INSTAGRAM_ACCESS_TOKEN", "token")
+    remote = RecordingPublisher()
+    monkeypatch.setattr(instagram, "InstagramPublisher", lambda *args: remote)
+    fake_storage = MagicMock()
+    monkeypatch.setattr(
+        S3MediaStorage,
+        "from_config",
+        classmethod(lambda cls, values: fake_storage),
+    )
+
+    assert publish_routed_manifest(tmp_path) == {"ig": 1}
+    fake_storage.upload.assert_called_once_with(image.resolve(), "https://cdn.example.com/outbox")
+    assert remote.calls == [(image.resolve(), "caption")]
+
+
+def test_storage_backed_publisher_sanitizes_upload_failure(
+    tmp_path: Path, capsys
+) -> None:
+    image = tmp_path / "asset.jpg"
+    image.write_bytes(b"jpeg")
+    storage = MagicMock()
+    storage.upload.side_effect = RuntimeError("sensitive provider response")
+    publisher = RecordingPublisher()
+    backed = StorageBackedPublisher(publisher, storage, "https://cdn.example.com/outbox")
+
+    assert backed.publish(image, "caption") is False
+    assert publisher.calls == []
+    assert "sensitive provider response" not in capsys.readouterr().out
