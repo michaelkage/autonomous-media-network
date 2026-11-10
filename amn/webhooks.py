@@ -121,9 +121,7 @@ def _record_tiktok_webhook(
                             "ALTER TABLE tiktok_publish_operations ADD COLUMN delivery_id TEXT"
                         )
                     if "output" not in operation_columns:
-                        db.execute(
-                            "ALTER TABLE tiktok_publish_operations ADD COLUMN output TEXT"
-                        )
+                        db.execute("ALTER TABLE tiktok_publish_operations ADD COLUMN output TEXT")
                     operation = db.execute(
                         "SELECT operation_key, delivery_id, output "
                         "FROM tiktok_publish_operations WHERE publish_id = ?",
@@ -153,9 +151,7 @@ def _record_tiktok_webhook(
                     else delivery_id_for("tiktok-webhook", publish_id)
                 )
                 correlated_output = (
-                    str(operation[2])
-                    if operation and operation[2]
-                    else f"publish_id:{publish_id}"
+                    str(operation[2]) if operation and operation[2] else f"publish_id:{publish_id}"
                 )
                 db.execute(
                     """
