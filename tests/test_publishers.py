@@ -75,6 +75,30 @@ def test_instagram_requires_public_https_media_host() -> None:
         InstagramPublisher("token", "123456", "http://localhost/outbox")
 
 
+def test_tiktok_publishers_share_rate_limiter_per_access_token() -> None:
+    first = TikTokPublisher(
+        "shared-token-for-rate-limit-test",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+    )
+    second = TikTokPublisher(
+        "shared-token-for-rate-limit-test",
+        "https://media.example.com/other",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+    )
+    other = TikTokPublisher(
+        "different-token-for-rate-limit-test",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+    )
+
+    assert first.rate_limiter is second.rate_limiter
+    assert first.rate_limiter is not other.rate_limiter
+
+
 def test_tiktok_photo_publish_checks_creator_privacy_and_status(tmp_path: Path) -> None:
     image = tmp_path / "photo.jpg"
     image.write_bytes(b"image")
