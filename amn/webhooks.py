@@ -101,10 +101,18 @@ def _record_tiktok_webhook(
                 return False
 
             if publish_id and event_type:
-                operation = db.execute(
-                    "SELECT operation_key FROM tiktok_publish_operations WHERE publish_id = ?",
-                    (publish_id,),
+                operation_table = db.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                    "AND name = 'tiktok_publish_operations'"
                 ).fetchone()
+                operation = (
+                    db.execute(
+                        "SELECT operation_key FROM tiktok_publish_operations WHERE publish_id = ?",
+                        (publish_id,),
+                    ).fetchone()
+                    if operation_table
+                    else None
+                )
                 if operation:
                     status = (
                         "failed"
