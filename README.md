@@ -75,7 +75,7 @@ This is deliberately a single-host queue backed by a local SQLite database, not 
 AMN_ROOT="$PWD" AMN_WATERMARK_TEXT="@yourhandle" amn-dashboard --host 127.0.0.1 --port 8765
 ```
 
-Open `http://127.0.0.1:8765`. The optional FastAPI dashboard exposes workspace counts, recent rejection reasons, a redacted configuration view, validated local config updates, and a pipeline trigger. It binds to loopback only, rejects non-loopback Host headers and cross-origin requests, and prevents overlapping pipeline runs. API secrets stay in environment variables and are never returned by the config endpoint. Do not expose it to a network without adding authentication and TLS.
+Open `http://127.0.0.1:8765`. The optional FastAPI dashboard exposes workspace counts, recent rejection reasons, durable job counts and recent job states, a redacted configuration view, validated local config updates, and a pipeline trigger. It binds to loopback only, rejects non-loopback Host headers and cross-origin requests, and prevents overlapping pipeline runs. API secrets stay in environment variables and are never returned by the config endpoint. Do not expose it to a network without adding authentication and TLS.
 
 ## Security and operational notes
 
