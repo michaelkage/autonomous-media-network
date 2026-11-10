@@ -181,10 +181,6 @@ def run(root: Path, *, thresholds: Thresholds | None = None,
     if not inbox.is_dir():
         result.errors.append(f"inbox directory not found: {inbox}")
         return result
-    if not dry_run and not watermark_text.strip():
-        result.errors.append(f"watermark required: set --watermark or {WATERMARK_ENV}")
-        return result
-
     runtime_config = root / "config" / "amn.json"
     max_distance = 5
     if runtime_config.is_file():
@@ -194,6 +190,9 @@ def run(root: Path, *, thresholds: Thresholds | None = None,
         )
     detector = DuplicateDetector(root / BUILD_DIR / "hashes.json", max_distance=max_distance)
     sources = sorted(p for p in inbox.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
+    if sources and not dry_run and not watermark_text.strip():
+        result.errors.append(f"watermark required: set --watermark or {WATERMARK_ENV}")
+        return result
     for source in sources:
         sidecar = source.with_suffix(".json")
         try:
