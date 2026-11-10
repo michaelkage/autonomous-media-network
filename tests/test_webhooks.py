@@ -177,3 +177,90 @@ def test_tiktok_webhook_requires_secret_and_publish_id(tmp_path: Path) -> None:
         headers=_signed_headers(missing_id, "test-secret"),
     )
     assert response.status_code == 400
+
+
+
+def test_tiktok_webhook_correlates_to_manifest_delivery(tmp_path: Path) -> None:
+    import hashlib
+
+    from amn.delivery_events import delivery_id_for
+    from amn.publish import publish_manifest
+
+    (tmp_path / "outbox").mkdir()
+    asset = tmp_path / "outbox" / "correlated.jpg"
+    asset.write_bytes(b"image-bytes")
+    manifest = tmp_path / "build" / "manifest.json"
+    manifest.parent.mkdir()
+    manifest.write_text(
+        json.dumps({"passed": [{"output": "outbox/correlated.jpg", "caption": "private caption"}]}),
+        encoding="utf-8",
+    )
+    database = tmp_path / "build" / "jobs.sqlite3"
+    publisher = TikTokPublisher(
+        "test-access-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        max_polls=0,
+        rate_limit_db=database,
+    )
+
+    def fake_request(endpoint: str, payload: dict) -> dict:
+        if endpoint == "post/publish/creator_info/query":
+            return {"data": {"privacy_level_options": ["SELF_ONLY"]}}
+        if endpoint == "post/publish/content/init":
+            return {"data": {"publish_id": "publish-correlated"}}
+        raise AssertionError(f"unexpected endpoint: {endpoint}")
+
+    publisher._request = fake_request
+    assert publish_manifest(manifest, publisher, root=tmp_path, platform="tiktok", retries=0) == 0
+
+    body = _payload("post.publish.complete", "publish-correlated")
+    client = TestClient(
+        create_webhook_app(tmp_path, client_secret="test-secret"),
+        base_url="http://127.0.0.1",
+    )
+    response = client.post(
+        "/webhooks/tiktok",
+        content=body,
+        headers=_signed_headers(body, "test-secret"),
+    )
+    assert response.status_code == 200
+
+    digest = hashlib.sha256(asset.read_bytes()).hexdigest()
+    expected_id = delivery_id_for("tiktok", f"{digest}:outbox/correlated.jpg")
+    events = delivery_event_snapshot(database)["recent"]
+    callback = next(event for event in events if event["event_type"] == "provider_webhook_complete")
+    assert callback["delivery_id"] == expected_id
+    assert callback["output"] == "outbox/correlated.jpg"
+    assert any(
+        event["delivery_id"] == expected_id and event["event_type"] == "attempt_started"
+        for event in events
+    )
+
+
+def test_tiktok_operation_table_migrates_legacy_schema(tmp_path: Path) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    database.parent.mkdir()
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "CREATE TABLE tiktok_publish_operations ("
+            "operation_key TEXT PRIMARY KEY, publish_id TEXT NOT NULL, "
+            "status TEXT NOT NULL, updated_at REAL NOT NULL)"
+        )
+        db.execute(
+            "INSERT INTO tiktok_publish_operations VALUES (?, ?, ?, ?)",
+            ("legacy-operation", "legacy-publish", "pending", time.time()),
+        )
+
+    publisher = TikTokPublisher(
+        "test-access-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        rate_limit_db=database,
+    )
+    assert publisher._load_operation("legacy-operation") == ("legacy-publish", "pending")
+    with sqlite3.connect(database) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(tiktok_publish_operations)")}
+    assert {"delivery_id", "output"} <= columns
