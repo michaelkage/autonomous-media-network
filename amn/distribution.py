@@ -27,8 +27,15 @@ def load_config(path: Path) -> dict[str, Any]:
 
 
 def validate_config(data: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(data.get("sources", {}), dict):
+    sources = data.get("sources", {})
+    if not isinstance(sources, dict):
         raise ValueError("sources must be an object")
+    reddit_sources = sources.get("reddit", [])
+    if not isinstance(reddit_sources, list) or any(
+        not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_]{2,21}", name)
+        for name in reddit_sources
+    ):
+        raise ValueError("sources.reddit must be an array of valid subreddit names")
     if not isinstance(data.get("targets", []), list):
         raise ValueError("targets must be an array")
     if not isinstance(data.get("routes", {}), dict):
@@ -41,9 +48,15 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("min_likes must be >= 0 and max_distance must be between 0 and 64")
     ids: set[str] = set()
     for target in data.get("targets", []):
-        if not isinstance(target, dict) or not target.get("id") or not target.get("platform"):
-            raise ValueError("each target requires id and platform")
-        target_id = str(target["id"])
+        if (
+            not isinstance(target, dict)
+            or not isinstance(target.get("id"), str)
+            or not target.get("id")
+            or not isinstance(target.get("platform"), str)
+            or not target.get("platform")
+        ):
+            raise ValueError("each target requires string id and platform fields")
+        target_id = target["id"]
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", target_id):
             raise ValueError(
                 "target id must contain only letters, numbers, underscores, and hyphens"
@@ -64,8 +77,9 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(
                     f"store credentials in environment variables, not config ({field})"
                 )
-        if target.get("token_env") and not str(target["token_env"]).isidentifier():
-            raise ValueError("token_env must be an environment variable name")
+        for env_key in ("token_env", "handle_env", "password_env"):
+            if target.get(env_key) and not str(target[env_key]).isidentifier():
+                raise ValueError(f"{env_key} must be an environment variable name")
     for route, target_ids in data.get("routes", {}).items():
         if not isinstance(target_ids, list) or any(
             target_id not in ids for target_id in target_ids
