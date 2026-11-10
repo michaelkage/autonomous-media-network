@@ -393,7 +393,8 @@ class JobQueue:
                 next_run = scheduled_at + (skipped + 1) * interval
                 if not math.isfinite(next_run) or next_run <= current:
                     raise ValueError(
-                        f"schedule {schedule['id']!r} interval cannot advance beyond the current timestamp"
+                        f"schedule {schedule['id']!r} interval cannot advance "
+                        "beyond the current timestamp"
                     )
                 dedupe_key = f"schedule:{schedule['id']}:{scheduled_at.hex()}"
                 job_id = str(uuid.uuid4())
