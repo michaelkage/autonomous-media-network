@@ -254,3 +254,17 @@ def test_reddit_sidecar_has_no_views_field(project: Path):
         assert "views" not in metrics, "Reddit doesn't give views; fabricating them fakes the gate"
         assert metrics["likes"] == 1234
         assert metrics["comments"] == 56
+
+
+
+def test_source_platform_metadata_does_not_overwrite_asset_filename(project, add_asset):
+    source = add_asset(metrics={"views": 10_000, "likes": 500})
+    sidecar = json.loads(source.with_suffix(".json").read_text(encoding="utf-8"))
+    sidecar.update({"source": "reddit", "subreddit": "earthporn"})
+    source.with_suffix(".json").write_text(json.dumps(sidecar), encoding="utf-8")
+
+    result = run(project, watermark_text="@amn")
+
+    assert result.passed[0]["source"] == "photo.jpg"
+    assert result.passed[0]["source_platform"] == "reddit"
+    assert result.passed[0]["subreddit"] == "earthporn"
