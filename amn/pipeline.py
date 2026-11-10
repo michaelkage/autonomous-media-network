@@ -259,6 +259,8 @@ def main(argv: list[str] | None = None) -> int:
     pub.add_argument("--platform", choices=["mock", "bluesky", "telegram", "instagram", "tiktok"])
     pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
     pub.add_argument("--root", type=Path, default=Path.cwd())
+    doctor = sub.add_parser("doctor", help="run read-only publishing and media-host preflight checks")
+    doctor.add_argument("--root", type=Path, default=Path.cwd())
     fetch = sub.add_parser("fetch")
     fetch.add_argument("--source", required=True, choices=["reddit"])
     fetch.add_argument("--query", help="one subreddit; omit to fetch configured Reddit sources")
@@ -266,6 +268,17 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
 
+    if args.command == "doctor":
+        from .diagnostics import run_diagnostics
+
+        checks = run_diagnostics(args.root)
+        failed = 0
+        for check in checks:
+            status = "OK" if check["ok"] else "FAIL"
+            print(f"[{status}] {check['target']} / {check['check']}: {check['detail']}")
+            failed += not check["ok"]
+        print(f"diagnostics: {len(checks) - failed} passed, {failed} failed")
+        return 1 if failed else 0
     if args.command == "run":
         watermark = args.watermark or os.environ.get(WATERMARK_ENV, "")
         result = run(args.root, watermark_text=watermark, dry_run=args.dry_run)
