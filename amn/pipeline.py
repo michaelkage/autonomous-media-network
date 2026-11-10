@@ -56,7 +56,7 @@ def load_thresholds(root: Path) -> Thresholds:
         return Thresholds()
     with pyproject.open("rb") as handle:
         config = tomllib.load(handle)
-    return Thresholds.from_mapping(config.get("tool", {}).get("amn", {}))
+    values = dict(config.get("tool", {}).get("amn", {}))\n    dynamic = root / "config" / "amn.json"\n    if dynamic.is_file():\n        runtime = json.loads(dynamic.read_text(encoding="utf-8"))\n        values.update(runtime.get("thresholds", {}))\n    return Thresholds.from_mapping(values)
 
 
 def _sha256(path: Path) -> str:
@@ -168,7 +168,7 @@ def run(root: Path, *, thresholds: Thresholds | None = None,
         result.errors.append(f"inbox directory not found: {inbox}")
         return result
 
-    detector = DuplicateDetector(root / BUILD_DIR / "hashes.json")
+    runtime_config = root / "config" / "amn.json"\n    max_distance = 5\n    if runtime_config.is_file():\n        max_distance = int(json.loads(runtime_config.read_text(encoding="utf-8")).get("thresholds", {}).get("max_distance", 5))\n    detector = DuplicateDetector(root / BUILD_DIR / "hashes.json", max_distance=max_distance)
     sources = sorted(p for p in inbox.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
     for source in sources:
         sidecar = source.with_suffix(".json")
