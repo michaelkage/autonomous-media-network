@@ -142,3 +142,67 @@ class TestBlueskyPublisher:
 
     def test_is_a_publisher(self):
         assert issubclass(BlueskyPublisher, Publisher)
+
+
+def test_delivery_journal_records_success_without_caption_or_secrets(manifest: Path, tmp_path: Path) -> None:
+    from amn.delivery_events import delivery_event_snapshot
+
+    class Recording(Publisher):
+        def publish(self, image_path: Path, caption: str) -> bool:
+            return True
+
+    assert publish_manifest(manifest, Recording(), platform="journal-test") == 2
+    snapshot = delivery_event_snapshot(tmp_path / "build" / "jobs.sqlite3")
+
+    assert snapshot["counts"] == {
+        "attempt_started": 2,
+        "provider_accepted": 2,
+        "published": 2,
+    }
+    assert [event["event_type"] for event in reversed(snapshot["recent"])] == [
+        "attempt_started",
+        "provider_accepted",
+        "published",
+        "attempt_started",
+        "provider_accepted",
+        "published",
+    ]
+    serialized = json.dumps(snapshot)
+    assert "first" not in serialized
+    assert "No caption provided" not in serialized
+    assert "Authorization" not in serialized
+
+
+def test_delivery_journal_records_retry_and_terminal_failure(manifest: Path, tmp_path: Path) -> None:
+    from amn.delivery_events import delivery_event_snapshot
+
+    class AlwaysFails(Publisher):
+        retry_after = 3.5
+
+        def publish(self, image_path: Path, caption: str) -> bool:
+            return False
+
+    assert publish_manifest(
+        manifest, AlwaysFails(), platform="retry-journal-test", retries=1
+    ) == 0
+    snapshot = delivery_event_snapshot(tmp_path / "build" / "jobs.sqlite3")
+
+    events = [event for event in snapshot["recent"] if event["output"] == "outbox/one.jpg"]
+    assert [event["event_type"] for event in reversed(events)] == [
+        "attempt_started",
+        "attempt_failed",
+        "retry_scheduled",
+        "attempt_started",
+        "attempt_failed",
+    ]
+    assert events[2]["retry_after_seconds"] == 3.5
+    assert events[2]["will_retry"] is True
+    assert events[0]["will_retry"] is True
+    assert events[-1]["will_retry"] is False
+
+
+def test_delivery_event_snapshot_validates_limit(tmp_path: Path) -> None:
+    from amn.delivery_events import delivery_event_snapshot
+
+    with pytest.raises(ValueError, match="between 1 and 500"):
+        delivery_event_snapshot(tmp_path / "missing.sqlite3", limit=0)
