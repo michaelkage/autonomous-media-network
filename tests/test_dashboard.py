@@ -62,3 +62,33 @@ def test_dashboard_saves_only_valid_configuration(tmp_path: Path) -> None:
     assert valid.status_code == 200
     saved = json.loads((tmp_path / "config" / "amn.json").read_text(encoding="utf-8"))
     assert saved["sources"]["reddit"] == ["earthporn"]
+
+
+
+def test_dashboard_recursively_redacts_secret_values(tmp_path: Path) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "amn.json").write_text(
+        json.dumps(
+            {
+                "sources": {"token": "nested-secret"},
+                "targets": [
+                    {
+                        "id": "telegram",
+                        "platform": "telegram",
+                        "token": "bot-secret",
+                        "token_env": "TELEGRAM_BOT_TOKEN",
+                    }
+                ],
+                "routes": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+
+    config = client.get("/api/config").json()
+
+    assert "token" not in config["sources"]
+    assert "token" not in config["targets"][0]
+    assert config["targets"][0]["token_env"] == "TELEGRAM_BOT_TOKEN"
