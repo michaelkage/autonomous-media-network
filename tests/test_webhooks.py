@@ -69,9 +69,7 @@ def test_tiktok_webhook_verifies_signature_and_deduplicates(tmp_path: Path) -> N
     assert status == "complete"
     assert receipt_count == 1
 
-    unavailable_body = _payload(
-        "post.publish.no_longer_publicaly_available", "publish-123"
-    )
+    unavailable_body = _payload("post.publish.no_longer_publicaly_available", "publish-123")
     unavailable = client.post(
         "/webhooks/tiktok",
         content=unavailable_body,
@@ -172,9 +170,7 @@ def test_tiktok_webhook_requires_secret_and_publish_id(tmp_path: Path) -> None:
         create_webhook_app(tmp_path, client_secret="test-secret"),
         base_url="http://127.0.0.1",
     )
-    missing_id = json.dumps(
-        {"event": "post.publish.complete", "content": "{}"}
-    ).encode()
+    missing_id = json.dumps({"event": "post.publish.complete", "content": "{}"}).encode()
     response = configured.post(
         "/webhooks/tiktok",
         content=missing_id,
