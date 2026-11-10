@@ -185,7 +185,6 @@ def _publish_manifest_unlocked(
     return successes
 
 
-
 def publish_manifest(
     manifest_path: Path,
     publisher: Publisher,
