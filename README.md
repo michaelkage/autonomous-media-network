@@ -28,11 +28,17 @@ Production runs fail closed when `AMN_WATERMARK_TEXT` is missing. When an output
 
 Copy `config/amn.example.json` to `config/amn.json`. If `--query` is omitted from `amn fetch`, AMN ingests every subreddit listed in `sources.reddit`. Routes map item categories/tags or the source subreddit in each image sidecar to enabled targets. Example sidecar metadata: `"categories": ["landscape"]`. The default route is empty, so content is never broadcast accidentally. Use `amn publish --routed --root .` to dispatch through those mappings. Credentials belong in environment variables, not JSON configuration.
 
-Supported publisher adapters include Bluesky, Telegram, Facebook Pages, X, Instagram Graph API, and TikTok Content Posting API photo posts:
+Supported publisher adapters include Bluesky, Telegram, Facebook Pages, X, Reddit link posts, Instagram Graph API, and TikTok Content Posting API photo posts:
 
 ```bash
 TELEGRAM_BOT_TOKEN="..." TELEGRAM_CHAT_ID="@your_channel" \
   amn publish --platform telegram --root .
+
+# Reddit: registered OAuth access token, submit scope, and descriptive User-Agent
+REDDIT_USER_ACCESS_TOKEN="..." REDDIT_SUBREDDIT="earthporn" \\
+AMN_REDDIT_USER_AGENT="linux:amn:v0.2.0 (by /u/your_username)" \\
+AMN_PUBLIC_MEDIA_URL="https://media.example.com/outbox" \\
+  amn publish --platform reddit --root .
 
 # X: OAuth 2.0 user access token with tweet.write, media.write, and users.read
 X_USER_ACCESS_TOKEN="..." amn publish --platform x --root .
@@ -123,6 +129,7 @@ Open `http://127.0.0.1:8765`. The optional FastAPI dashboard exposes workspace c
 - Use dedicated platform bot/app credentials with the minimum scopes.
 - Never commit `config/amn.json`, bot tokens, app passwords, or OAuth refresh tokens.
 - Telegram bots must be added to the destination channel with permission to post.
+- Reddit publishing uses an authenticated Reddit Data API user token with the `submit` scope and a truthful, descriptive `AMN_REDDIT_USER_AGENT` in Reddit's documented format. The subreddit must allow the account to submit. AMN currently creates a **link post** pointing at the publicly hosted image; this is not a native Reddit image upload. Configure a public HTTPS media URL, and optionally S3 storage, so Reddit can fetch the image. Reddit API access and commercial use remain subject to Reddit approval and its current developer terms. AMN does not automate OAuth consent or refresh tokens; supply a valid access token and rotate it outside AMN.
 - Facebook publishing requires a Page access token for a Page where the authorizing person has the CREATE_CONTENT task, plus the pages_manage_posts, pages_read_engagement, and pages_show_list permissions. Keep the Page token in FACEBOOK_PAGE_ACCESS_TOKEN; it is never stored in AMN config.
 - X publishing requires an OAuth 2.0 user access token with `tweet.write`, `media.write`, and `users.read` scopes. Store it in `X_USER_ACCESS_TOKEN`. AMN uploads a JPEG through X API v2's simple image-upload endpoint (5 MiB limit), then creates the Post with the returned media ID. A successful media upload followed by a failed Post request can leave an unused media object; a crash after Post acceptance but before local state persistence can still produce an at-least-once duplicate.
 - Instagram/TikTok reposting must respect creator rights, platform policies, and required attribution.
