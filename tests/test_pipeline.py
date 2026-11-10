@@ -7,7 +7,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from amn.pipeline import RunResult, load_thresholds, main, run
+from amn.intelligence import DuplicateDetector
+from amn.pipeline import RunResult, load_thresholds, main, process_image, run
 from amn.vetting import Thresholds
 
 
@@ -267,3 +268,22 @@ def test_source_platform_metadata_does_not_overwrite_asset_filename(project, add
     assert result.passed[0]["source"] == "photo.jpg"
     assert result.passed[0]["source_platform"] == "reddit"
     assert result.passed[0]["subreddit"] == "earthporn"
+
+
+
+def test_duplicate_rejection_reports_actual_dhash_distance(project, add_asset):
+    source = add_asset(size=(1200, 1200))
+    detector = DuplicateDetector(project / "build" / "hashes.json", max_distance=2)
+    detector.record_from_path(source)
+
+    verdict, record = process_image(
+        source,
+        project / "outbox",
+        Thresholds(),
+        watermark_text="@amn",
+        detector=detector,
+    )
+
+    assert not verdict.passed
+    assert "distance 0, threshold 2" in verdict.reasons[0]
+    assert record == {}
