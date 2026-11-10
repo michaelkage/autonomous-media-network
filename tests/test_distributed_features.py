@@ -134,3 +134,41 @@ def test_enabled_tiktok_target_requires_explicit_direct_post() -> None:
                 "thresholds": {"min_likes": 500, "max_distance": 5},
             }
         )
+
+
+
+def test_storage_config_accepts_s3_with_environment_credentials() -> None:
+    config = {
+        "storage": {
+            "provider": "s3",
+            "bucket": "amn-media",
+            "region": "auto",
+            "endpoint_url_env": "AMN_S3_ENDPOINT_URL",
+        },
+        "targets": [],
+        "routes": {},
+    }
+    assert validate_config(config) == config
+
+
+def test_storage_config_rejects_invalid_provider_and_environment_names() -> None:
+    with pytest.raises(ValueError, match="storage.provider"):
+        validate_config(
+            {
+                "storage": {"provider": "gcs", "bucket": "amn-media"},
+                "targets": [],
+                "routes": {},
+            }
+        )
+    with pytest.raises(ValueError, match="storage.access_key_env"):
+        validate_config(
+            {
+                "storage": {
+                    "provider": "s3",
+                    "bucket": "amn-media",
+                    "access_key_env": "NOT A VARIABLE",
+                },
+                "targets": [],
+                "routes": {},
+            }
+        )
