@@ -22,9 +22,17 @@ class TikTokPublisher(Publisher):
 
     API = "https://open.tiktokapis.com/v2"
 
-    def __init__(self, access_token: str, public_base_url: str, privacy_level: str,
-                 *, direct_post_enabled: bool = False, timeout: float = 30.0,
-                 poll_interval: float = 5.0, max_polls: int = 24) -> None:
+    def __init__(
+        self,
+        access_token: str,
+        public_base_url: str,
+        privacy_level: str,
+        *,
+        direct_post_enabled: bool = False,
+        timeout: float = 30.0,
+        poll_interval: float = 5.0,
+        max_polls: int = 24,
+    ) -> None:
         parsed = urlparse(public_base_url)
         if not access_token:
             raise ValueError("TikTok user access token is required")
@@ -39,8 +47,10 @@ class TikTokPublisher(Publisher):
         self.timeout, self.poll_interval, self.max_polls = timeout, poll_interval, max_polls
         self.session = requests.Session()
         self.rate_limiter = RateLimiter(min_interval=10.0)
-        self.headers = {"Authorization": f"Bearer {self.token}",
-                        "Content-Type": "application/json; charset=UTF-8"}
+        self.headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json; charset=UTF-8",
+        }
 
     def _request(self, endpoint: str, payload: dict) -> dict:
         self.rate_limiter.wait()
@@ -68,14 +78,23 @@ class TikTokPublisher(Publisher):
                 )
 
             description = caption.encode("utf-16-le")[:8000].decode("utf-16-le", errors="ignore")
-            initialized = self._request("post/publish/content/init", {
-                "post_info": {"title": description[:90], "description": description,
-                              "privacy_level": self.privacy_level},
-                "source_info": {"source": "PULL_FROM_URL", "photo_cover_index": 0,
-                                "photo_images": [photo_url]},
-                "post_mode": "DIRECT_POST",
-                "media_type": "PHOTO",
-            })
+            initialized = self._request(
+                "post/publish/content/init",
+                {
+                    "post_info": {
+                        "title": description[:90],
+                        "description": description,
+                        "privacy_level": self.privacy_level,
+                    },
+                    "source_info": {
+                        "source": "PULL_FROM_URL",
+                        "photo_cover_index": 0,
+                        "photo_images": [photo_url],
+                    },
+                    "post_mode": "DIRECT_POST",
+                    "media_type": "PHOTO",
+                },
+            )
             publish_id = initialized.get("data", {}).get("publish_id")
             if not publish_id:
                 raise RuntimeError("TikTok did not return a publish ID")
