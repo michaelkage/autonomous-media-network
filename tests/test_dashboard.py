@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from amn.dashboard import create_app
+from amn.jobs import JobQueue
 
 
 def test_dashboard_serves_ui_and_workspace_status(tmp_path: Path) -> None:
@@ -91,3 +92,17 @@ def test_dashboard_recursively_redacts_secret_values(tmp_path: Path) -> None:
     assert "token" not in config["sources"]
     assert "token" not in config["targets"][0]
     assert config["targets"][0]["token_env"] == "TELEGRAM_BOT_TOKEN"
+
+
+
+def test_dashboard_exposes_durable_job_counts_and_recent_jobs(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path / "build" / "jobs.sqlite3")
+    job_id = queue.enqueue("fetch", {"query": "earthporn"})
+
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+    jobs = client.get("/api/status").json()["jobs"]
+
+    assert jobs["counts"]["pending"] == 1
+    assert jobs["recent"][0]["id"] == job_id
+    assert jobs["recent"][0]["kind"] == "fetch"
+    assert "payload" not in jobs["recent"][0]
