@@ -19,6 +19,7 @@ dev = ["pytest>=8.0", "ruff>=0.5", "httpx>=0.27"]
 [project.scripts]
 amn = "amn.pipeline:main"
 amn-dashboard = "amn.dashboard:main"
+amn-webhooks = "amn.webhooks:main"
 
 [tool.setuptools.packages.find]
 include = ["amn*"]
