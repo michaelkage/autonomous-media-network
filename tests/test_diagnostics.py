@@ -123,7 +123,17 @@ def test_diagnostics_reports_missing_telegram_credentials(tmp_path: Path, monkey
 def test_diagnostics_skips_disabled_targets_without_network_calls(tmp_path: Path) -> None:
     _workspace(
         tmp_path,
-        {"targets": [{"id": "ig", "platform": "instagram", "enabled": False, "public_base_url": "https://media.example.com/outbox"}], "routes": {}},
+        {
+            "targets": [
+                {
+                    "id": "ig",
+                    "platform": "instagram",
+                    "enabled": False,
+                    "public_base_url": "https://media.example.com/outbox",
+                }
+            ],
+            "routes": {},
+        },
     )
     session = MagicMock()
 
