@@ -381,7 +381,7 @@ class JobQueue:
                 interval = float(schedule["interval_seconds"])
                 skipped = max(0, int((current - scheduled_at) // interval))
                 next_run = scheduled_at + (skipped + 1) * interval
-                dedupe_key = f"schedule:{schedule['id']}:{scheduled_at:.6f}"
+                dedupe_key = f"schedule:{schedule['id']}:{scheduled_at.hex()}"
                 job_id = str(uuid.uuid4())
                 cursor = db.execute(
                     """
