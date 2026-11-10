@@ -14,6 +14,11 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+try:
+    from fastapi import Request
+except ModuleNotFoundError:
+    Request = Any
+
 from .delivery_events import delivery_id_for
 
 _TIKTOK_EVENTS = {
@@ -162,7 +167,7 @@ def create_webhook_app(
 ) -> Any:
     """Create the public webhook ASGI app; deploy behind an HTTPS reverse proxy."""
     try:
-        from fastapi import FastAPI, HTTPException, Request
+        from fastapi import FastAPI, HTTPException
     except ModuleNotFoundError as exc:
         raise RuntimeError('Install webhook dependencies: pip install -e ".[dashboard]"') from exc
 
