@@ -206,9 +206,29 @@ def _publish_manifest_unlocked(
         if delivery_key in published:
             continue
         caption = item.get("caption", "No caption provided.")
+        from .delivery_events import record_delivery_event
+
+        event_database = root / "build" / "jobs.sqlite3"
         for attempt in range(retries + 1):
             limiter.wait()
+            attempt_number = attempt + 1
+            record_delivery_event(
+                event_database,
+                platform=platform_key,
+                delivery_key=delivery_key,
+                output=relative.as_posix(),
+                event_type="attempt_started",
+                attempt=attempt_number,
+            )
             if publisher.publish(image_path, caption):
+                record_delivery_event(
+                    event_database,
+                    platform=platform_key,
+                    delivery_key=delivery_key,
+                    output=relative.as_posix(),
+                    event_type="provider_accepted",
+                    attempt=attempt_number,
+                )
                 published[delivery_key] = {
                     "digest": digest,
                     "output": relative.as_posix(),
@@ -216,11 +236,42 @@ def _publish_manifest_unlocked(
                     "published_at": time.time(),
                 }
                 _save_state(state_file, state)
+                record_delivery_event(
+                    event_database,
+                    platform=platform_key,
+                    delivery_key=delivery_key,
+                    output=relative.as_posix(),
+                    event_type="published",
+                    attempt=attempt_number,
+                )
                 successes += 1
                 break
-            if attempt < retries:
-                retry_after = getattr(publisher, "retry_after", None)
-                time.sleep(limiter.retry_delay(attempt, retry_after))
+
+            retry_after = getattr(publisher, "retry_after", None)
+            will_retry = attempt < retries
+            record_delivery_event(
+                event_database,
+                platform=platform_key,
+                delivery_key=delivery_key,
+                output=relative.as_posix(),
+                event_type="attempt_failed",
+                attempt=attempt_number,
+                will_retry=will_retry,
+                retry_after_seconds=retry_after,
+            )
+            if will_retry:
+                delay = limiter.retry_delay(attempt, retry_after)
+                record_delivery_event(
+                    event_database,
+                    platform=platform_key,
+                    delivery_key=delivery_key,
+                    output=relative.as_posix(),
+                    event_type="retry_scheduled",
+                    attempt=attempt_number,
+                    will_retry=True,
+                    retry_after_seconds=delay,
+                )
+                time.sleep(delay)
     return successes
 
 
