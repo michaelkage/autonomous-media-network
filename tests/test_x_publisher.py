@@ -82,3 +82,13 @@ def test_x_config_accepts_user_token_environment_name() -> None:
         "routes": {"default": ["x-main"]},
     }
     assert validate_config(config) == config
+
+
+def test_x_rejects_malformed_media_upload_response(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = XPublisher("user-token")
+    publisher.session.post = MagicMock(return_value=_response({"data": None}))
+
+    assert publisher.publish(image, "caption") is False
+    publisher.session.post.assert_called_once()
