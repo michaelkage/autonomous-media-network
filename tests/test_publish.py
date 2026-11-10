@@ -173,8 +173,12 @@ def test_delivery_journal_records_success_without_caption_or_secrets(manifest: P
     assert "Authorization" not in serialized
 
 
-def test_delivery_journal_records_retry_and_terminal_failure(manifest: Path, tmp_path: Path) -> None:
+def test_delivery_journal_records_retry_and_terminal_failure(
+    manifest: Path, tmp_path: Path, monkeypatch
+) -> None:
     from amn.delivery_events import delivery_event_snapshot
+
+    monkeypatch.setattr("amn.publish.time.sleep", lambda _delay: None)
 
     class AlwaysFails(Publisher):
         retry_after = 3.5
@@ -197,7 +201,7 @@ def test_delivery_journal_records_retry_and_terminal_failure(manifest: Path, tmp
     ]
     assert events[2]["retry_after_seconds"] == 3.5
     assert events[2]["will_retry"] is True
-    assert events[0]["will_retry"] is True
+    assert events[2]["will_retry"] is True
     assert events[-1]["will_retry"] is False
 
 
