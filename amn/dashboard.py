@@ -33,9 +33,7 @@ def create_app(root: Path = ROOT) -> Any:
         for name in ("inbox", "outbox", "rejected", "build"):
             folder = root / name
             files = (
-                sorted(p.name for p in folder.iterdir() if p.is_file())
-                if folder.is_dir()
-                else []
+                sorted(p.name for p in folder.iterdir() if p.is_file()) if folder.is_dir() else []
             )
             result[name] = {"count": len(files), "files": files[:200]}
         return result
@@ -46,7 +44,12 @@ def create_app(root: Path = ROOT) -> Any:
         for target in config.get("targets", []):
             for key in list(target):
                 if key.lower() in {
-                    "token", "access_token", "refresh_token", "password", "secret", "client_secret"
+                    "token",
+                    "access_token",
+                    "refresh_token",
+                    "password",
+                    "secret",
+                    "client_secret",
                 }:
                     target.pop(key, None)
         return config
@@ -63,9 +66,13 @@ def create_app(root: Path = ROOT) -> Any:
     @app.post("/api/run")
     def run_pipeline() -> dict[str, Any]:
         from .pipeline import run
+
         result = run(root, watermark_text=os.environ.get("AMN_WATERMARK_TEXT", ""))
-        return {"passed": len(result.passed), "rejected": len(result.rejected),
-                "errors": result.errors}
+        return {
+            "passed": len(result.passed),
+            "rejected": len(result.rejected),
+            "errors": result.errors,
+        }
 
     return app
 
