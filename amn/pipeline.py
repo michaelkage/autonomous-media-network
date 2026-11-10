@@ -443,7 +443,8 @@ def main(argv: list[str] | None = None) -> int:
                     f"{operation['operation_key']} "
                     f"container={operation['container_id']} "
                     f"status={operation['status']} "
-                    f"updated_at={datetime.fromtimestamp(operation['updated_at'], UTC).isoformat()} "
+                    "updated_at="
+                    f"{datetime.fromtimestamp(operation['updated_at'], UTC).isoformat()} "
                     f"output={operation['output'] or '-'}"
                 )
             return 0
