@@ -52,9 +52,11 @@ class TelegramPublisher(Publisher):
                 raise RuntimeError(payload.get("description", "Telegram rejected the post"))
             result = payload.get("result")
             message_id = result.get("message_id") if isinstance(result, dict) else None
-            if isinstance(message_id, bool) or not isinstance(message_id, int):
-                raise RuntimeError("Telegram accepted the request but returned no valid message_id")
-            self.last_message_id = message_id
+            self.last_message_id = (
+                message_id
+                if isinstance(message_id, int) and not isinstance(message_id, bool)
+                else None
+            )
             return True
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
             print(f"Telegram {method} failed: {exc}")
