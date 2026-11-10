@@ -373,6 +373,24 @@ def main(argv: list[str] | None = None) -> int:
     job_list.add_argument("--limit", type=int, default=50)
     job_list.add_argument("--root", type=Path, default=Path.cwd())
 
+    schedule = job_commands.add_parser("schedule", help="manage recurring durable jobs")
+    schedule_commands = schedule.add_subparsers(dest="schedule_command", required=True)
+    schedule_add = schedule_commands.add_parser("add", help="create a recurring job schedule")
+    schedule_add.add_argument("--id", required=True)
+    schedule_add.add_argument("--kind", choices=["pipeline", "fetch", "publish"], required=True)
+    schedule_add.add_argument("--every-seconds", type=float, required=True)
+    schedule_add.add_argument("--query", help="one subreddit for fetch schedules")
+    schedule_add.add_argument("--limit", type=int, default=10)
+    schedule_add.add_argument("--root", type=Path, default=Path.cwd())
+    schedule_list = schedule_commands.add_parser("list", help="list recurring schedules")
+    schedule_list.add_argument("--root", type=Path, default=Path.cwd())
+    schedule_disable = schedule_commands.add_parser("disable", help="disable a recurring schedule")
+    schedule_disable.add_argument("--id", required=True)
+    schedule_disable.add_argument("--root", type=Path, default=Path.cwd())
+    schedule_tick = schedule_commands.add_parser("tick", help="enqueue schedules that are due")
+    schedule_tick.add_argument("--limit", type=int, default=100)
+    schedule_tick.add_argument("--root", type=Path, default=Path.cwd())
+
     fetch = sub.add_parser("fetch")
     fetch.add_argument("--source", required=True, choices=["reddit"])
     fetch.add_argument("--query", help="one subreddit; omit to fetch configured Reddit sources")
@@ -384,6 +402,45 @@ def main(argv: list[str] | None = None) -> int:
         from .jobs import JobQueue
 
         queue = JobQueue(args.root / BUILD_DIR / "jobs.sqlite3")
+        if args.jobs_command == "schedule":
+            if args.schedule_command == "add":
+                if args.every_seconds <= 0:
+                    parser.error("--every-seconds must be positive")
+                if args.limit < 1 or args.limit > 100:
+                    parser.error("--limit for schedules must be between 1 and 100")
+                if args.kind != "fetch" and args.query:
+                    parser.error("--query is only valid for fetch schedules")
+                payload: dict[str, Any] = {"root": str(args.root.resolve())}
+                if args.kind == "fetch":
+                    payload.update({"query": args.query, "limit": args.limit})
+                try:
+                    queue.add_schedule(
+                        args.id, args.kind, payload, args.every_seconds
+                    )
+                except ValueError as exc:
+                    parser.error(str(exc))
+                print(f"created schedule {args.id} ({args.kind}, every {args.every_seconds:g}s)")
+                return 0
+            if args.schedule_command == "list":
+                for item in queue.list_schedules():
+                    state = "enabled" if item["enabled"] else "disabled"
+                    print(
+                        f"{item['id']} {state} {item['kind']} "
+                        f"every={item['interval_seconds']:g}s "
+                        f"next={datetime.fromtimestamp(item['next_run_at'], UTC).isoformat()}"
+                    )
+                return 0
+            if args.schedule_command == "disable":
+                if not queue.disable_schedule(args.id):
+                    parser.error(f"schedule not found or already disabled: {args.id}")
+                print(f"disabled schedule {args.id}")
+                return 0
+            if args.limit < 1 or args.limit > 1000:
+                parser.error("--limit for schedule tick must be between 1 and 1000")
+            count = queue.enqueue_due_schedules(limit=args.limit)
+            print(f"enqueued {count} due scheduled job(s)")
+            return 0
+
         if args.jobs_command == "enqueue":
             if args.limit < 1 or args.limit > 100:
                 parser.error("--limit for jobs enqueue must be between 1 and 100")
