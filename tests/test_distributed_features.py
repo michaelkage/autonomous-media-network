@@ -171,3 +171,33 @@ def test_storage_config_rejects_invalid_provider_and_environment_names() -> None
                 "routes": {},
             }
         )
+
+
+def test_reddit_target_requires_valid_subreddit_and_https_media() -> None:
+    valid = {
+        "targets": [
+            {
+                "id": "reddit-main",
+                "platform": "reddit",
+                "enabled": True,
+                "subreddit": "earthporn",
+                "public_base_url": "https://cdn.example.com/outbox",
+            }
+        ],
+        "routes": {"default": ["reddit-main"]},
+    }
+    assert validate_config(valid) == valid
+
+    invalid_subreddit = {
+        **valid,
+        "targets": [{**valid["targets"][0], "subreddit": "r/earthporn"}],
+    }
+    with pytest.raises(ValueError, match="subreddit"):
+        validate_config(invalid_subreddit)
+
+    invalid_url = {
+        **valid,
+        "targets": [{**valid["targets"][0], "public_base_url": "http://localhost/outbox"}],
+    }
+    with pytest.raises(ValueError, match="HTTPS"):
+        validate_config(invalid_url)
