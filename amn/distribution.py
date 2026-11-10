@@ -36,11 +36,18 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
     likes, distance = int(thresholds.get("min_likes", 500)), int(thresholds.get("max_distance", 5))
     if likes < 0 or not 0 <= distance <= 64:
         raise ValueError("min_likes must be >= 0 and max_distance must be between 0 and 64")
+    ids: set[str] = set()
     for target in data.get("targets", []):
         if not isinstance(target, dict) or not target.get("id") or not target.get("platform"):
             raise ValueError("each target requires id and platform")
+        if target["id"] in ids:
+            raise ValueError(f"duplicate target id: {target['id']}")
+        ids.add(target["id"])
         if target.get("token_env") and not str(target["token_env"]).isidentifier():
             raise ValueError("token_env must be an environment variable name")
+    for route, target_ids in data.get("routes", {}).items():
+        if not isinstance(target_ids, list) or any(target_id not in ids for target_id in target_ids):
+            raise ValueError(f"route {route!r} references an unknown target")
     return data
 
 
@@ -61,7 +68,7 @@ def save_config(path: Path, data: dict[str, Any]) -> None:
 
 
 def targets_for(item: dict[str, Any], config: dict[str, Any]) -> list[dict[str, Any]]:
-    """Resolve explicit categories/tags to configured targets; never broadcast implicitly."""
+    """Resolve explicit categories/tags to configured targets; no implicit broadcast."""
     categories = set(item.get("categories", [])) | set(item.get("tags", []))
     routes = config.get("routes", {})
     target_ids: set[str] = set(routes.get("default", []))
@@ -69,3 +76,51 @@ def targets_for(item: dict[str, Any], config: dict[str, Any]) -> list[dict[str, 
         target_ids.update(routes.get(category, []))
     return [target for target in config.get("targets", [])
             if target.get("enabled", True) and target.get("id") in target_ids]
+
+
+def publish_routed_manifest(root: Path) -> dict[str, int]:
+    """Dispatch each manifest item only to targets selected by its route."""
+    from .publish import BlueskyPublisher, publish_manifest
+    from .publishers.telegram import TelegramPublisher
+
+    root = Path(root).resolve()
+    manifest = root / "build" / "manifest.json"
+    if not manifest.is_file():
+        raise FileNotFoundError(f"manifest not found: {manifest}")
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    config = validate_config(load_config(root / "config" / "amn.json"))
+    totals: dict[str, int] = {}
+    for target in config.get("targets", []):
+        if not target.get("enabled", True):
+            continue
+        platform = target["platform"].lower()
+        if platform == "telegram":
+            token = os.environ.get(target.get("token_env", "TELEGRAM_BOT_TOKEN"))
+            chat_id = target.get("chat_id")
+            if not token or not chat_id:
+                print(f"skipping {target['id']}: Telegram token or chat_id missing")
+                continue
+            publisher = TelegramPublisher(token, str(chat_id))
+        elif platform == "bluesky":
+            handle = os.environ.get(target.get("handle_env", "BLUESKY_HANDLE"))
+            password = os.environ.get(target.get("password_env", "BLUESKY_APP_PASSWORD"))
+            if not handle or not password:
+                print(f"skipping {target['id']}: Bluesky credentials missing")
+                continue
+            publisher = BlueskyPublisher(handle, password)
+        else:
+            print(f"skipping {target['id']}: unsupported platform {platform}")
+            continue
+
+        selected = [item for item in data.get("passed", []) if target in targets_for(item, config)]
+        if not selected:
+            totals[target["id"]] = 0
+            continue
+        temporary_manifest = root / "build" / f".routed-{target['id']}.json"
+        temporary_manifest.write_text(json.dumps({"passed": selected}), encoding="utf-8")
+        try:
+            totals[target["id"]] = publish_manifest(
+                temporary_manifest, publisher, root=root, platform=target["id"])
+        finally:
+            temporary_manifest.unlink(missing_ok=True)
+    return totals
