@@ -48,7 +48,8 @@ def record_delivery_event(
     if retry_after_seconds is not None and retry_after_seconds < 0:
         raise ValueError("retry_after_seconds cannot be negative")
 
-    delivery_id = hashlib.sha256(f"{platform}\0{delivery_key}".encode("utf-8")).hexdigest()
+    delivery_material = f"{platform}\0{delivery_key}"
+    delivery_id = hashlib.sha256(delivery_material.encode()).hexdigest()
     with closing(_connect(database)) as db:
         db.execute(
             """
