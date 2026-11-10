@@ -79,6 +79,8 @@ def test_instagram_resolution_published_is_atomic_and_audited(tmp_path: Path) ->
     snapshot = delivery_event_snapshot(database)
     assert snapshot["instagram_operations"]["complete"] == 2
     assert snapshot["instagram_operations"]["reconciliation_required"] == 1
+    assert snapshot["counts"]["manual_reconciliation_published"] == 1
+    assert snapshot["recent"][0]["event_type"] == "manual_reconciliation_published"
     audit = snapshot["instagram_operations"]["resolution_history"]
     assert audit[0]["operation_key"] == "ambiguous-a"
 
@@ -102,6 +104,7 @@ def test_instagram_not_published_resolution_marks_retryable_and_audits(tmp_path:
         ).fetchone()[0]
     assert status == "failed"
     assert instagram_resolution_history(database)[0]["resolution"] == "not_published"
+    assert delivery_event_snapshot(database)["counts"]["manual_reconciliation_not_published"] == 1
 
 
 def test_instagram_operation_cannot_be_resolved_twice(tmp_path: Path) -> None:
