@@ -153,6 +153,8 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
         try:
             totals[target["id"]] = publish_manifest(
                 temporary_manifest, publisher, root=root, platform=target["id"])
+            if platform == "telegram" and totals[target["id"]]:
+                publisher.publish_document(temporary_manifest)
         finally:
             temporary_manifest.unlink(missing_ok=True)
     return totals
