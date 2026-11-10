@@ -125,3 +125,43 @@ def test_dashboard_exposes_schedule_metadata_without_payload(tmp_path: Path) -> 
     assert schedules["recent"][0]["kind"] == "fetch"
     assert "payload" not in schedules["recent"][0]
     assert "private_note" not in json.dumps(schedules)
+
+
+
+def test_dashboard_exposes_sanitized_delivery_event_history(tmp_path: Path) -> None:
+    from amn.delivery_events import record_delivery_event
+
+    database = tmp_path / "build" / "jobs.sqlite3"
+    record_delivery_event(
+        database,
+        platform="instagram",
+        delivery_key="private-digest-key",
+        output="outbox/image.jpg",
+        event_type="attempt_started",
+        attempt=1,
+    )
+    record_delivery_event(
+        database,
+        platform="instagram",
+        delivery_key="private-digest-key",
+        output="outbox/image.jpg",
+        event_type="published",
+        attempt=1,
+    )
+
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+    response = client.get("/api/deliveries?limit=10")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["counts"] == {"attempt_started": 1, "published": 1}
+    assert payload["recent"][0]["event_type"] == "published"
+    assert payload["recent"][0]["platform"] == "instagram"
+    assert "private-digest-key" not in json.dumps(payload)
+    assert "caption" not in json.dumps(payload)
+
+
+def test_dashboard_delivery_history_rejects_invalid_limit(tmp_path: Path) -> None:
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+    response = client.get("/api/deliveries?limit=501")
+    assert response.status_code == 400
