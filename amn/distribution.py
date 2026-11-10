@@ -118,7 +118,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         "privacy_level",
         "direct_post_enabled",
     }
-    supported_platforms = {"telegram", "bluesky", "instagram", "tiktok", "facebook"}
+    supported_platforms = {"telegram", "bluesky", "instagram", "tiktok", "facebook", "x"}
     ids: set[str] = set()
     for target in targets:
         if not isinstance(target, dict):
@@ -240,6 +240,7 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
     from .publishers.instagram import InstagramPublisher
     from .publishers.telegram import TelegramPublisher
     from .publishers.tiktok import TikTokPublisher
+    from .publishers.x import XPublisher
 
     root = Path(root).resolve()
     manifest = root / "build" / "manifest.json"
@@ -268,6 +269,12 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
                 print(f"skipping {target['id']}: Bluesky credentials missing")
                 continue
             publisher = BlueskyPublisher(handle, password)
+        elif platform == "x":
+            token = os.environ.get(target.get("token_env", "X_USER_ACCESS_TOKEN"))
+            if not token:
+                print(f"skipping {target['id']}: X user access token missing")
+                continue
+            publisher = XPublisher(token)
         elif platform == "facebook":
             token = os.environ.get(target.get("token_env", "FACEBOOK_PAGE_ACCESS_TOKEN"))
             page_id = target.get("facebook_page_id")
