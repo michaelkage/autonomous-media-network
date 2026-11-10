@@ -8,7 +8,7 @@ from urllib.parse import quote, urlparse
 
 import requests
 
-from ..publish import Publisher, RateLimiter
+from ..publish import Publisher, RateLimiter, _retry_after_from_response
 
 __all__ = ["TikTokPublisher"]
 
@@ -59,6 +59,7 @@ class TikTokPublisher(Publisher):
         self.timeout, self.poll_interval, self.max_polls = timeout, poll_interval, max_polls
         self.session = requests.Session()
         self.rate_limiter = RateLimiter(min_interval=10.0)
+        self.retry_after: float | None = None
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json; charset=UTF-8",
@@ -77,6 +78,7 @@ class TikTokPublisher(Publisher):
         return result
 
     def publish(self, image_path: Path, caption: str) -> bool:
+        self.retry_after = None
         if image_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
             print("TikTok photo posts require a supported image")
             return False
@@ -122,5 +124,7 @@ class TikTokPublisher(Publisher):
                     time.sleep(self.poll_interval)
             raise RuntimeError("TikTok post did not complete before the polling deadline")
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
+            response = exc.response if isinstance(exc, requests.RequestException) else None
+            self.retry_after = _retry_after_from_response(response)
             print(f"TikTok publish failed: {exc}")
             return False
