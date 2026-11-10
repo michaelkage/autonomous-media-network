@@ -61,7 +61,7 @@ amn jobs worker --once --root .
 amn jobs worker --root .
 ```
 
-The queue lives at `build/jobs.sqlite3`. Claims are transactional across local worker processes, each running job has a renewable lease, and crashed workers' expired jobs are reclaimed. Failed jobs retry with bounded exponential backoff until their attempt budget is exhausted. Optional dedupe keys prevent duplicate enqueue requests:
+The queue lives at `build/jobs.sqlite3`. Claims are transactional across local worker processes, each running job has a renewable lease, and crashed workers' expired jobs are reclaimed. Failed jobs retry with bounded exponential backoff until their attempt budget is exhausted. Pipeline jobs are serialized so two workers do not process the same inbox concurrently. The media pipeline also keeps an atomic per-asset checkpoint at `build/pipeline-checkpoint.json`: completed outcomes are journaled before inbox assets are retired, interrupted runs resume from that journal, and an identical already-rendered output is reused instead of duplicated. Optional dedupe keys prevent duplicate enqueue requests:
 
 ```bash
 amn jobs enqueue --kind fetch --query earthporn --dedupe-key "reddit:earthporn:2026-11-10" --root .
