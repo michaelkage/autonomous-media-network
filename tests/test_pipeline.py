@@ -241,7 +241,8 @@ def test_reddit_sidecar_has_no_views_field(project: Path):
                 ]
             }
         }
-        mock_response.content = b"\x89PNG not real"
+        mock_response.headers = {}
+        mock_response.iter_content.return_value = [b"\x89PNG not real"]
         mock_response.raise_for_status.return_value = None
         mock_session.get.return_value = mock_response
 
