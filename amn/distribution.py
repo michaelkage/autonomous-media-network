@@ -64,7 +64,9 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         or likes < 0
         or not 0 <= distance <= 64
     ):
-        raise ValueError("min_likes must be a non-negative integer and max_distance an integer from 0 to 64")
+        raise ValueError(
+            "min_likes must be a non-negative integer and max_distance an integer from 0 to 64"
+        )
 
     allowed_fields = {
         "id", "platform", "enabled", "token_env", "handle_env", "password_env",
@@ -79,8 +81,12 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         if set(target) - allowed_fields:
             raise ValueError(f"unsupported target fields: {sorted(set(target) - allowed_fields)}")
         target_id, platform = target.get("id"), target.get("platform")
-        if not isinstance(target_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", target_id):
-            raise ValueError("target id must contain only letters, numbers, underscores, and hyphens")
+        if not isinstance(target_id, str) or not re.fullmatch(
+            r"[A-Za-z0-9_-]{1,64}", target_id
+        ):
+            raise ValueError(
+                "target id must contain only letters, numbers, underscores, and hyphens"
+            )
         if not isinstance(platform, str) or platform.lower() not in supported_platforms:
             raise ValueError(f"target {target_id!r} has an unsupported platform")
         if target_id in ids:
@@ -96,7 +102,9 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             if value is not None and (
                 not isinstance(value, str) or not value.isidentifier()
             ):
-                raise ValueError(f"target {target_id!r}: {env_key} must be an environment variable name")
+                raise ValueError(
+                    f"target {target_id!r}: {env_key} must be an environment variable name"
+                )
         for string_key in (
             "chat_id", "instagram_user_id", "public_base_url", "privacy_level"
         ):
@@ -118,8 +126,12 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
                 )
 
     for route, target_ids in routes.items():
-        if not isinstance(route, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", route):
-            raise ValueError("route names must contain only letters, numbers, underscores, and hyphens")
+        if not isinstance(route, str) or not re.fullmatch(
+            r"[A-Za-z0-9_-]{1,64}", route
+        ):
+            raise ValueError(
+                "route names must contain only letters, numbers, underscores, and hyphens"
+            )
         if not isinstance(target_ids, list) or any(
             not isinstance(target_id, str) or target_id not in ids for target_id in target_ids
         ):
