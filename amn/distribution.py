@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,8 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(data.get("routes", {}), dict):
         raise ValueError("routes must be an object")
     thresholds = data.get("thresholds", {})
+    if not isinstance(thresholds, dict):
+        raise ValueError("thresholds must be an object")
     likes, distance = int(thresholds.get("min_likes", 500)), int(thresholds.get("max_distance", 5))
     if likes < 0 or not 0 <= distance <= 64:
         raise ValueError("min_likes must be >= 0 and max_distance must be between 0 and 64")
@@ -40,9 +43,12 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
     for target in data.get("targets", []):
         if not isinstance(target, dict) or not target.get("id") or not target.get("platform"):
             raise ValueError("each target requires id and platform")
-        if target["id"] in ids:
-            raise ValueError(f"duplicate target id: {target['id']}")
-        ids.add(target["id"])
+        target_id = str(target["id"])
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", target_id):
+            raise ValueError("target id must contain only letters, numbers, underscores, and hyphens")
+        if target_id in ids:
+            raise ValueError(f"duplicate target id: {target_id}")
+        ids.add(target_id)
         if target.get("token_env") and not str(target["token_env"]).isidentifier():
             raise ValueError("token_env must be an environment variable name")
     for route, target_ids in data.get("routes", {}).items():
