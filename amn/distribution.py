@@ -285,6 +285,7 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
                 str(media_url),
                 str(privacy),
                 direct_post_enabled=target.get("direct_post_enabled", False),
+                rate_limit_db=root / "build" / "jobs.sqlite3",
             )
         else:
             print(f"skipping {target['id']}: unsupported platform {platform}")
