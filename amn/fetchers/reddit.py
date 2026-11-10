@@ -16,10 +16,14 @@ _MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
 
 class RedditFetcher:
-    def __init__(self, user_agent: str = "amn-fetcher-v1") -> None:
+    def __init__(
+        self, user_agent: str = "amn-fetcher-v1", access_token: str | None = None
+    ) -> None:
         self.user_agent = user_agent
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent})
+        if access_token:
+            self.session.headers.update({"Authorization": f"Bearer {access_token}"})
 
     def fetch(self, subreddit_name: str, limit: int = 10, inbox_dir: Path = Path("inbox")) -> int:
         if not re.fullmatch(r"[A-Za-z0-9_]{2,21}", subreddit_name):
@@ -29,7 +33,7 @@ class RedditFetcher:
         inbox_dir.mkdir(parents=True, exist_ok=True)
         try:
             response = self.session.get(
-                f"https://www.reddit.com/r/{subreddit_name}/hot.json",
+                f"https://oauth.reddit.com/r/{subreddit_name}/hot",
                 params={"limit": limit},
                 timeout=(5, 20),
             )
