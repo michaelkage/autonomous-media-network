@@ -286,3 +286,71 @@ def test_duplicate_rejection_reports_actual_dhash_distance(project, add_asset):
     assert not verdict.passed
     assert "distance 0, threshold 2" in verdict.reasons[0]
     assert record == {}
+
+
+
+def test_pipeline_recovers_checkpoint_before_retiring_source(project, add_asset):
+    import hashlib
+
+    source = add_asset(size=(1200, 1200))
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    record = {
+        "source": source.name,
+        "source_sha256": digest,
+        "output": "outbox/photo.jpg",
+        "width": 1200,
+        "height": 1200,
+        "caption": "Recovered caption",
+        "sha256": "a" * 64,
+    }
+    checkpoint = project / "build" / "pipeline-checkpoint.json"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text(
+        json.dumps(
+            [
+                {
+                    "source_name": source.name,
+                    "source_sha256": digest,
+                    "outcome": "passed",
+                    "record": record,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = run(project, watermark_text="@amn")
+
+    assert result.passed == [record]
+    assert not source.exists()
+    assert not source.with_suffix(".json").exists()
+    assert not checkpoint.exists()
+    assert read_manifest(project)["passed"] == [record]
+
+
+def test_process_image_reuses_identical_output_after_interrupted_run(project, add_asset):
+    source = add_asset(size=(1200, 1200))
+    first_verdict, first_record = process_image(
+        source, project / "outbox", Thresholds(), watermark_text="@amn"
+    )
+    second_verdict, second_record = process_image(
+        source, project / "outbox", Thresholds(), watermark_text="@amn"
+    )
+
+    assert first_verdict.passed and second_verdict.passed
+    assert first_record["output"] == second_record["output"]
+    assert first_record["sha256"] == second_record["sha256"]
+    assert len(list((project / "outbox").glob("*.jpg"))) == 1
+
+
+def test_corrupt_pipeline_checkpoint_fails_closed(project, add_asset):
+    source = add_asset(size=(1200, 1200))
+    checkpoint = project / "build" / "pipeline-checkpoint.json"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text('{"unexpected": "object"}', encoding="utf-8")
+
+    result = run(project, watermark_text="@amn")
+
+    assert result.passed == []
+    assert result.errors and "checkpoint is invalid" in result.errors[0]
+    assert source.is_file()
