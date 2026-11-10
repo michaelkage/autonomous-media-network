@@ -339,6 +339,12 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             publisher = InstagramPublisher(token, user_id, media_url)
         else:
+            if os.environ.get("TIKTOK_DIRECT_POST_ENABLED") != "true":
+                print(
+                    "error: set TIKTOK_DIRECT_POST_ENABLED=true to enable TikTok direct posting",
+                    file=sys.stderr,
+                )
+                return 1
             token = os.environ.get("TIKTOK_ACCESS_TOKEN")
             media_url = os.environ.get("AMN_PUBLIC_MEDIA_URL")
             privacy = os.environ.get("TIKTOK_PRIVACY_LEVEL")
