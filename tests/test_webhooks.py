@@ -71,8 +71,27 @@ def test_tiktok_webhook_verifies_signature_and_deduplicates(tmp_path: Path) -> N
     assert status == "complete"
     assert receipt_count == 1
 
+    unavailable_body = _payload(
+        "post.publish.no_longer_publicaly_available", "publish-123"
+    )
+    unavailable = client.post(
+        "/webhooks/tiktok",
+        content=unavailable_body,
+        headers=_signed_headers(unavailable_body, "test-secret"),
+    )
+    assert unavailable.status_code == 200
+    with sqlite3.connect(database) as db:
+        status = db.execute(
+            "SELECT status FROM tiktok_publish_operations WHERE publish_id = ?",
+            ("publish-123",),
+        ).fetchone()[0]
+    assert status == "complete"
+
     events = delivery_event_snapshot(database)
-    assert events["counts"] == {"provider_webhook_complete": 1}
+    assert events["counts"] == {
+        "provider_webhook_complete": 1,
+        "provider_webhook_unavailable": 1,
+    }
     assert events["recent"][0]["output"] == "publish_id:publish-123"
 
 
