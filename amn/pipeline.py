@@ -102,9 +102,7 @@ def process_image(
         image.load()
         if detector and detector.is_duplicate(image):
             return (
-                Verdict(
-                    False, ("duplicate image detected via dHash",), image.width, image.height
-                ),
+                Verdict(False, ("duplicate image detected via dHash",), image.width, image.height),
                 {},
             )
         engagement, broken_metrics = _read_engagement(source)
@@ -124,15 +122,19 @@ def process_image(
             outbox.mkdir(parents=True, exist_ok=True)
             watermarked = apply_watermark(image, watermark_text)
             import io
+
             buffer = io.BytesIO()
             watermarked.convert("RGB").save(buffer, "JPEG", quality=JPEG_QUALITY, optimize=True)
             _atomic_write(output, buffer.getvalue())
-        caption = Captioner.generate(image.copy(), {
-            "likes": engagement.likes if engagement else 0,
-            "comments": engagement.comments if engagement else 0,
-            "shares": engagement.shares if engagement else 0,
-            "views": engagement.views if engagement else 0,
-        })
+        caption = Captioner.generate(
+            image.copy(),
+            {
+                "likes": engagement.likes if engagement else 0,
+                "comments": engagement.comments if engagement else 0,
+                "shares": engagement.shares if engagement else 0,
+                "views": engagement.views if engagement else 0,
+            },
+        )
 
     record: dict[str, Any] = {
         "source": source.name,
@@ -155,8 +157,12 @@ def process_image(
         pass
     if engagement is not None:
         record["engagement_rate"] = round(engagement.rate, 6)
-        record["metrics"] = {"views": engagement.views, "likes": engagement.likes,
-                             "comments": engagement.comments, "shares": engagement.shares}
+        record["metrics"] = {
+            "views": engagement.views,
+            "likes": engagement.likes,
+            "comments": engagement.comments,
+            "shares": engagement.shares,
+        }
     if not dry_run:
         record["sha256"] = _sha256(output)
         if detector:
@@ -168,17 +174,27 @@ def write_manifest(build_dir: Path, result: RunResult) -> Path:
     build_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "counts": {"passed": len(result.passed), "rejected": len(result.rejected),
-                   "errors": len(result.errors)},
-        "passed": result.passed, "rejected": result.rejected, "errors": result.errors,
+        "counts": {
+            "passed": len(result.passed),
+            "rejected": len(result.rejected),
+            "errors": len(result.errors),
+        },
+        "passed": result.passed,
+        "rejected": result.rejected,
+        "errors": result.errors,
     }
     manifest = build_dir / "manifest.json"
     _atomic_write(manifest, (json.dumps(payload, indent=2) + "\n").encode())
     return manifest
 
 
-def run(root: Path, *, thresholds: Thresholds | None = None,
-        watermark_text: str = "", dry_run: bool = False) -> RunResult:
+def run(
+    root: Path,
+    *,
+    thresholds: Thresholds | None = None,
+    watermark_text: str = "",
+    dry_run: bool = False,
+) -> RunResult:
     root = Path(root).resolve()
     thresholds = thresholds or load_thresholds(root)
     inbox, outbox, rejected = (root / name for name in (INBOX_DIR, OUTBOX_DIR, REJECTED_DIR))
@@ -191,7 +207,8 @@ def run(root: Path, *, thresholds: Thresholds | None = None,
     if runtime_config.is_file():
         max_distance = int(
             json.loads(runtime_config.read_text(encoding="utf-8"))
-            .get("thresholds", {}).get("max_distance", 5)
+            .get("thresholds", {})
+            .get("max_distance", 5)
         )
     detector = DuplicateDetector(root / BUILD_DIR / "hashes.json", max_distance=max_distance)
     sources = sorted(
@@ -203,8 +220,9 @@ def run(root: Path, *, thresholds: Thresholds | None = None,
     for source in sources:
         sidecar = source.with_suffix(".json")
         try:
-            verdict, record = process_image(source, outbox, thresholds, watermark_text,
-                                             dry_run, detector=detector)
+            verdict, record = process_image(
+                source, outbox, thresholds, watermark_text, dry_run, detector=detector
+            )
         except (OSError, ValueError) as exc:
             result.errors.append(f"{source.name}: {exc}")
             if not dry_run:
@@ -256,15 +274,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if result.errors else 0
     if args.command == "fetch":
         from .fetchers.reddit import RedditFetcher
+
         fetcher = RedditFetcher(os.environ.get("REDDIT_USER_AGENT", "amn-fetcher-v1"))
         if args.query:
             sources = [args.query]
         else:
             from .distribution import load_config
+
             sources = (
-                load_config(args.root / "config" / "amn.json")
-                .get("sources", {})
-                .get("reddit", [])
+                load_config(args.root / "config" / "amn.json").get("sources", {}).get("reddit", [])
             )
         if not sources:
             print(
@@ -278,6 +296,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "publish":
         if args.routed:
             from .distribution import publish_routed_manifest
+
             totals = publish_routed_manifest(args.root)
             print(f"routed publishing complete: {totals}")
             return 0
@@ -288,6 +307,7 @@ def main(argv: list[str] | None = None) -> int:
         from .publishers.instagram import InstagramPublisher
         from .publishers.telegram import TelegramPublisher
         from .publishers.tiktok import TikTokPublisher
+
         if args.platform == "mock":
             publisher = MockPublisher()
         elif args.platform == "bluesky":
@@ -328,8 +348,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 1
             publisher = TikTokPublisher(
-                token, media_url, privacy,
-                direct_post_enabled=os.environ.get("TIKTOK_DIRECT_POST_ENABLED") == "true")
+                token,
+                media_url,
+                privacy,
+                direct_post_enabled=os.environ.get("TIKTOK_DIRECT_POST_ENABLED") == "true",
+            )
         manifest_path = args.root / BUILD_DIR / "manifest.json"
         count = publish_manifest(manifest_path, publisher, root=args.root)
         if args.platform == "telegram" and count:
