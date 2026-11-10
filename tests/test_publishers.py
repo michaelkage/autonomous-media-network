@@ -70,6 +70,17 @@ def test_instagram_runs_container_processing_and_publish_flow(tmp_path: Path) ->
     assert publisher.session.get.call_count == 1
 
 
+def test_instagram_rejects_image_over_graph_api_limit(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    with image.open("wb") as handle:
+        handle.truncate(8 * 1024 * 1024 + 1)
+    publisher = InstagramPublisher("token", "123456", "https://media.example.com/outbox")
+    publisher.session.post = MagicMock()
+
+    assert publisher.publish(image, "caption") is False
+    publisher.session.post.assert_not_called()
+
+
 def test_instagram_requires_public_https_media_host() -> None:
     with pytest.raises(ValueError, match="public HTTPS"):
         InstagramPublisher("token", "123456", "http://localhost/outbox")
