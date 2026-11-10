@@ -93,6 +93,32 @@ def create_app(root: Path = ROOT) -> Any:
                 result["recent_rejections"] = [{"error": "manifest is unreadable"}]
         else:
             result["recent_rejections"] = []
+        jobs_database = root / "build" / "jobs.sqlite3"
+        if jobs_database.is_file():
+            from .jobs import JobQueue
+
+            queue = JobQueue(jobs_database)
+            result["jobs"] = {
+                "counts": queue.counts(),
+                "recent": [
+                    {
+                        "id": job["id"],
+                        "kind": job["kind"],
+                        "status": job["status"],
+                        "attempts": job["attempts"],
+                        "max_attempts": job["max_attempts"],
+                        "last_error": job["last_error"],
+                        "created_at": job["created_at"],
+                        "updated_at": job["updated_at"],
+                    }
+                    for job in queue.list(limit=20)
+                ],
+            }
+        else:
+            result["jobs"] = {
+                "counts": {"pending": 0, "running": 0, "succeeded": 0, "failed": 0},
+                "recent": [],
+            }
         return result
 
     @app.get("/api/config")
