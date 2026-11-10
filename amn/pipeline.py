@@ -124,8 +124,7 @@ def process_image(
         output = outbox / f"{source.stem[:80]}.jpg"
         if output.exists():
             output = outbox / f"{source.stem[:80]}-{source_digest[:12]}.jpg"
-        if output.exists():
-            raise FileExistsError(f"refusing to overwrite existing output: {output}")
+        rendered: bytes | None = None
         if not dry_run:
             outbox.mkdir(parents=True, exist_ok=True)
             watermarked = apply_watermark(image, watermark_text)
@@ -133,7 +132,12 @@ def process_image(
 
             buffer = io.BytesIO()
             watermarked.convert("RGB").save(buffer, "JPEG", quality=JPEG_QUALITY, optimize=True)
-            _atomic_write(output, buffer.getvalue())
+            rendered = buffer.getvalue()
+            if output.exists():
+                if output.read_bytes() != rendered:
+                    raise FileExistsError(f"refusing to overwrite existing output: {output}")
+            else:
+                _atomic_write(output, rendered)
         caption = Captioner.generate(
             image.copy(),
             {
@@ -198,6 +202,38 @@ def write_manifest(build_dir: Path, result: RunResult) -> Path:
     return manifest
 
 
+def _load_checkpoint(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("pipeline checkpoint must contain a list")
+    entries: list[dict[str, Any]] = []
+    for entry in payload:
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("source_sha256"), str)
+            or entry.get("outcome") not in {"passed", "rejected", "error"}
+        ):
+            raise ValueError("pipeline checkpoint contains an invalid entry")
+        entries.append(entry)
+    return entries
+
+
+def _save_checkpoint(path: Path, entries: list[dict[str, Any]]) -> None:
+    _atomic_write(path, (json.dumps(entries, indent=2) + "\n").encode())
+
+
+def _restore_checkpoint_entry(result: RunResult, entry: dict[str, Any]) -> None:
+    outcome = entry["outcome"]
+    if outcome == "passed":
+        result.passed.append(entry["record"])
+    elif outcome == "rejected":
+        result.rejected.append(entry["record"])
+    else:
+        result.errors.append(entry["record"])
+
+
 def run(
     root: Path,
     *,
@@ -212,6 +248,15 @@ def run(
     if not inbox.is_dir():
         result.errors.append(f"inbox directory not found: {inbox}")
         return result
+    checkpoint_path = root / BUILD_DIR / "pipeline-checkpoint.json"
+    try:
+        checkpoint = [] if dry_run else _load_checkpoint(checkpoint_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        result.errors.append(f"pipeline checkpoint is invalid or unreadable: {exc}")
+        return result
+    completed = {entry["source_sha256"]: entry for entry in checkpoint}
+    for entry in checkpoint:
+        _restore_checkpoint_entry(result, entry)
     runtime_config = root / "config" / "amn.json"
     max_distance = 5
     if runtime_config.is_file():
@@ -228,26 +273,57 @@ def run(
         return result
     for source in sources:
         sidecar = source.with_suffix(".json")
+        source_digest = _sha256(source)
+        previous = completed.get(source_digest)
+        if previous is not None:
+            if previous["outcome"] == "passed":
+                source.unlink(missing_ok=True)
+                sidecar.unlink(missing_ok=True)
+            else:
+                _retire(source, sidecar, rejected)
+            continue
         try:
             verdict, record = process_image(
                 source, outbox, thresholds, watermark_text, dry_run, detector=detector
             )
+            if verdict.passed:
+                entry = {
+                    "source_sha256": source_digest,
+                    "outcome": "passed",
+                    "record": record,
+                }
+                result.passed.append(record)
+            else:
+                rejected_record = {
+                    "source": source.name,
+                    "reasons": list(verdict.reasons),
+                }
+                entry = {
+                    "source_sha256": source_digest,
+                    "outcome": "rejected",
+                    "record": rejected_record,
+                }
+                result.rejected.append(rejected_record)
         except (OSError, ValueError) as exc:
-            result.errors.append(f"{source.name}: {exc}")
-            if not dry_run:
-                _retire(source, sidecar, rejected)
-            continue
-        if verdict.passed:
-            result.passed.append(record)
-            if not dry_run:
+            error = f"{source.name}: {exc}"
+            entry = {
+                "source_sha256": source_digest,
+                "outcome": "error",
+                "record": error,
+            }
+            result.errors.append(error)
+        if not dry_run:
+            checkpoint.append(entry)
+            completed[source_digest] = entry
+            _save_checkpoint(checkpoint_path, checkpoint)
+            if entry["outcome"] == "passed":
                 source.unlink(missing_ok=True)
                 sidecar.unlink(missing_ok=True)
-        else:
-            result.rejected.append({"source": source.name, "reasons": list(verdict.reasons)})
-            if not dry_run:
+            else:
                 _retire(source, sidecar, rejected)
     if not dry_run:
         write_manifest(root / BUILD_DIR, result)
+        checkpoint_path.unlink(missing_ok=True)
     return result
 
 
