@@ -13,7 +13,7 @@ def test_dashboard_serves_ui_and_workspace_status(tmp_path: Path) -> None:
         (tmp_path / folder).mkdir()
     (tmp_path / "inbox" / "queued.jpg").write_bytes(b"asset")
 
-    client = TestClient(create_app(tmp_path))
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
     page = client.get("/")
     status = client.get("/api/status")
 
@@ -23,7 +23,7 @@ def test_dashboard_serves_ui_and_workspace_status(tmp_path: Path) -> None:
 
 
 def test_dashboard_blocks_cross_origin_mutations(tmp_path: Path) -> None:
-    client = TestClient(create_app(tmp_path))
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
     response = client.put(
         "/api/config",
         headers={"Origin": "https://attacker.example"},
@@ -39,7 +39,7 @@ def test_dashboard_rejects_non_loopback_host(tmp_path: Path) -> None:
 
 
 def test_dashboard_saves_only_valid_configuration(tmp_path: Path) -> None:
-    client = TestClient(create_app(tmp_path))
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
     invalid = client.put(
         "/api/config",
         json={
