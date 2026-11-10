@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from .distribution import load_config, save_config, validate_config
 
@@ -15,7 +17,7 @@ ROOT = Path(os.environ.get("AMN_ROOT", Path.cwd())).resolve()
 
 def create_app(root: Path = ROOT) -> Any:
     try:
-        from fastapi import FastAPI, HTTPException
+        from fastapi import FastAPI, HTTPException, Request
         from fastapi.responses import HTMLResponse
     except ModuleNotFoundError as exc:
         raise RuntimeError('Install dashboard dependencies: pip install -e ".[dashboard]"') from exc
@@ -23,6 +25,27 @@ def create_app(root: Path = ROOT) -> Any:
     root = Path(root).resolve()
     config_path = root / "config" / "amn.json"
     app = FastAPI(title="AMN Diagnostics", docs_url=None, redoc_url=None)
+    pipeline_lock = threading.Lock()
+
+    @app.middleware("http")
+    async def enforce_local_origin(request: Request, call_next: Any) -> Any:
+        host_header = request.headers.get("host", "")
+        host = urlsplit(f"//{host_header}").hostname
+        if host not in {"127.0.0.1", "localhost", "::1"}:
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse({"detail": "loopback host required"}, status_code=403)
+        origin = request.headers.get("origin")
+        if origin:
+            parsed_origin = urlsplit(origin)
+            if (
+                parsed_origin.scheme not in {"http", "https"}
+                or parsed_origin.netloc.lower() != host_header.lower()
+            ):
+                from fastapi.responses import JSONResponse
+
+                return JSONResponse({"detail": "cross-origin request blocked"}, status_code=403)
+        return await call_next(request)
 
     @app.get("/", response_class=HTMLResponse)
     def dashboard() -> str:
@@ -75,14 +98,19 @@ def create_app(root: Path = ROOT) -> Any:
 
     @app.post("/api/run")
     def run_pipeline() -> dict[str, Any]:
-        from .pipeline import run
+        if not pipeline_lock.acquire(blocking=False):
+            raise HTTPException(status_code=409, detail="pipeline is already running")
+        try:
+            from .pipeline import run
 
-        result = run(root, watermark_text=os.environ.get("AMN_WATERMARK_TEXT", ""))
-        return {
-            "passed": len(result.passed),
-            "rejected": len(result.rejected),
-            "errors": result.errors,
-        }
+            result = run(root, watermark_text=os.environ.get("AMN_WATERMARK_TEXT", ""))
+            return {
+                "passed": len(result.passed),
+                "rejected": len(result.rejected),
+                "errors": result.errors,
+            }
+        finally:
+            pipeline_lock.release()
 
     return app
 
