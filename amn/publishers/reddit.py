@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from urllib.parse import quote, urlparse
 
 import requests
@@ -32,10 +33,17 @@ class RedditPublisher(Publisher):
     ) -> None:
         if not access_token:
             raise ValueError("Reddit OAuth access token is required")
-        if not subreddit or not subreddit.replace("_", "").isalnum():
+        if not isinstance(subreddit, str) or not re.fullmatch(r"[A-Za-z0-9_]{2,21}", subreddit):
             raise ValueError("a valid subreddit name is required")
         parsed = urlparse(public_base_url)
-        if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
             raise ValueError("Reddit media URL must be public HTTPS without query or fragment")
         if not user_agent.strip() or len(user_agent) > 200:
             raise ValueError("a truthful Reddit API User-Agent (max 200 chars) is required")
