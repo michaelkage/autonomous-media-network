@@ -24,7 +24,7 @@ def _ensure_audit_table(db: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS instagram_operation_resolutions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            operation_key TEXT NOT NULL UNIQUE,
+            operation_key TEXT NOT NULL,
             container_id TEXT NOT NULL,
             resolution TEXT NOT NULL CHECK (resolution IN ('published', 'not_published')),
             previous_status TEXT NOT NULL,
