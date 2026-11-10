@@ -128,8 +128,7 @@ def delivery_event_snapshot(database: Path, limit: int = 100) -> dict[str, Any]:
             counts = {
                 str(row["event_type"]): int(row["count"])
                 for row in db.execute(
-                    "SELECT event_type, COUNT(*) AS count "
-                    "FROM delivery_events GROUP BY event_type"
+                    "SELECT event_type, COUNT(*) AS count FROM delivery_events GROUP BY event_type"
                 )
             }
             recent = [
@@ -160,22 +159,22 @@ def delivery_event_snapshot(database: Path, limit: int = 100) -> dict[str, Any]:
         ).fetchone()
         webhooks = empty["webhooks"].copy()
         if webhook_table:
-            columns = {
-                row[1] for row in db.execute("PRAGMA table_info(provider_webhook_receipts)")
-            }
-            event_time = "event_created_at" if "event_created_at" in columns else "NULL"
+            columns = {row[1] for row in db.execute("PRAGMA table_info(provider_webhook_receipts)")}
             row = db.execute(
                 "SELECT COUNT(*) AS received, MAX(received_at) AS last_received_at "
                 "FROM provider_webhook_receipts WHERE provider = 'tiktok'"
             ).fetchone()
             webhooks["received"] = int(row["received"])
             webhooks["last_received_at"] = row["last_received_at"]
-            latency = db.execute(
-                f"SELECT received_at, {event_time} AS event_created_at "
-                "FROM provider_webhook_receipts "
-                "WHERE provider = 'tiktok' AND event_created_at IS NOT NULL "
-                "ORDER BY received_at DESC LIMIT 1"
-            ).fetchone() if "event_created_at" in columns else None
+            latency = (
+                db.execute(
+                    "SELECT received_at, event_created_at FROM provider_webhook_receipts "
+                    "WHERE provider = 'tiktok' AND event_created_at IS NOT NULL "
+                    "ORDER BY received_at DESC LIMIT 1"
+                ).fetchone()
+                if "event_created_at" in columns
+                else None
+            )
             if latency and latency["event_created_at"] is not None:
                 webhooks["latest_latency_seconds"] = max(
                     0.0, float(latency["received_at"]) - float(latency["event_created_at"])
