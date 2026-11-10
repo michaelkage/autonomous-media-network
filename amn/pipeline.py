@@ -110,8 +110,9 @@ def process_image(
             return verdict, {}
 
         source_digest = _sha256(source)
-        output_name = f"{source.stem[:80]}-{source_digest[:12]}.jpg"
-        output = outbox / output_name
+        output = outbox / f"{source.stem[:80]}.jpg"
+        if output.exists():
+            output = outbox / f"{source.stem[:80]}-{source_digest[:12]}.jpg"
         if output.exists():
             raise FileExistsError(f"refusing to overwrite existing output: {output}")
         if not dry_run:
@@ -177,11 +178,11 @@ def run(root: Path, *, thresholds: Thresholds | None = None,
     thresholds = thresholds or load_thresholds(root)
     inbox, outbox, rejected = (root / name for name in (INBOX_DIR, OUTBOX_DIR, REJECTED_DIR))
     result = RunResult()
-    if not dry_run and not watermark_text.strip():
-        result.errors.append(f"watermark required: set --watermark or {WATERMARK_ENV}")
-        return result
     if not inbox.is_dir():
         result.errors.append(f"inbox directory not found: {inbox}")
+        return result
+    if not dry_run and not watermark_text.strip():
+        result.errors.append(f"watermark required: set --watermark or {WATERMARK_ENV}")
         return result
 
     runtime_config = root / "config" / "amn.json"
