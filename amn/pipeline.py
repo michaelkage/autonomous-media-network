@@ -101,7 +101,12 @@ def process_image(
     with Image.open(source) as image:
         image.load()
         if detector and detector.is_duplicate(image):
-            return Verdict(False, ("duplicate image detected via dHash",), image.width, image.height), {}
+            return (
+                Verdict(
+                    False, ("duplicate image detected via dHash",), image.width, image.height
+                ),
+                {},
+            )
         engagement, broken_metrics = _read_engagement(source)
         verdict = vet(image.format, image.size, engagement, thresholds)
         if broken_metrics:
@@ -189,7 +194,9 @@ def run(root: Path, *, thresholds: Thresholds | None = None,
             .get("thresholds", {}).get("max_distance", 5)
         )
     detector = DuplicateDetector(root / BUILD_DIR / "hashes.json", max_distance=max_distance)
-    sources = sorted(p for p in inbox.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
+    sources = sorted(
+        p for p in inbox.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES
+    )
     if sources and not dry_run and not watermark_text.strip():
         result.errors.append(f"watermark required: set --watermark or {WATERMARK_ENV}")
         return result
@@ -238,7 +245,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         watermark = args.watermark or os.environ.get(WATERMARK_ENV, "")
         result = run(args.root, watermark_text=watermark, dry_run=args.dry_run)
-        print(f"amn: {len(result.passed)} passed, {len(result.rejected)} rejected, {len(result.errors)} errors")
+        print(
+            f"amn: {len(result.passed)} passed, "
+            f"{len(result.rejected)} rejected, {len(result.errors)} errors"
+        )
         for item in result.rejected:
             print(f"  rejected {item['source']}: {'; '.join(item['reasons'])}")
         for error in result.errors:
@@ -251,9 +261,16 @@ def main(argv: list[str] | None = None) -> int:
             sources = [args.query]
         else:
             from .distribution import load_config
-            sources = load_config(args.root / "config" / "amn.json").get("sources", {}).get("reddit", [])
+            sources = (
+                load_config(args.root / "config" / "amn.json")
+                .get("sources", {})
+                .get("reddit", [])
+            )
         if not sources:
-            print("error: no Reddit sources configured; pass --query or set sources.reddit", file=sys.stderr)
+            print(
+                "error: no Reddit sources configured; pass --query or set sources.reddit",
+                file=sys.stderr,
+            )
             return 2
         total = sum(fetcher.fetch(source, args.limit, args.root / INBOX_DIR) for source in sources)
         print(f"successfully fetched {total} assets from {len(sources)} configured subreddit(s)")
@@ -274,13 +291,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.platform == "mock":
             publisher = MockPublisher()
         elif args.platform == "bluesky":
-            handle, password = os.environ.get("BLUESKY_HANDLE"), os.environ.get("BLUESKY_APP_PASSWORD")
+            handle = os.environ.get("BLUESKY_HANDLE")
+            password = os.environ.get("BLUESKY_APP_PASSWORD")
             if not handle or not password:
                 print("error: BLUESKY_HANDLE and BLUESKY_APP_PASSWORD required", file=sys.stderr)
                 return 1
             publisher = BlueskyPublisher(handle, password)
         elif args.platform == "telegram":
-            token, chat_id = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+            token = os.environ.get("TELEGRAM_BOT_TOKEN")
+            chat_id = os.environ.get("TELEGRAM_CHAT_ID")
             if not token or not chat_id:
                 print("error: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID required", file=sys.stderr)
                 return 1
@@ -290,7 +309,10 @@ def main(argv: list[str] | None = None) -> int:
             user_id = os.environ.get("INSTAGRAM_USER_ID")
             media_url = os.environ.get("AMN_PUBLIC_MEDIA_URL")
             if not token or not user_id or not media_url:
-                print("error: INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_USER_ID and AMN_PUBLIC_MEDIA_URL required", file=sys.stderr)
+                print(
+                    "error: INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_USER_ID and AMN_PUBLIC_MEDIA_URL required",
+                    file=sys.stderr,
+                )
                 return 1
             publisher = InstagramPublisher(token, user_id, media_url)
         else:
@@ -298,7 +320,10 @@ def main(argv: list[str] | None = None) -> int:
             media_url = os.environ.get("AMN_PUBLIC_MEDIA_URL")
             privacy = os.environ.get("TIKTOK_PRIVACY_LEVEL")
             if not token or not media_url or not privacy:
-                print("error: TIKTOK_ACCESS_TOKEN, AMN_PUBLIC_MEDIA_URL and TIKTOK_PRIVACY_LEVEL required", file=sys.stderr)
+                print(
+                    "error: TIKTOK_ACCESS_TOKEN, AMN_PUBLIC_MEDIA_URL and TIKTOK_PRIVACY_LEVEL required",
+                    file=sys.stderr,
+                )
                 return 1
             publisher = TikTokPublisher(
                 token, media_url, privacy,
