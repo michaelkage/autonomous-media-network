@@ -256,7 +256,6 @@ def test_reddit_sidecar_has_no_views_field(project: Path):
         assert metrics["comments"] == 56
 
 
-
 def test_source_platform_metadata_does_not_overwrite_asset_filename(project, add_asset):
     source = add_asset(metrics={"views": 10_000, "likes": 500})
     sidecar = json.loads(source.with_suffix(".json").read_text(encoding="utf-8"))
