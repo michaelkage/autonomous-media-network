@@ -246,6 +246,19 @@ def test_schedule_rejects_invalid_intervals(tmp_path: Path, interval: float) -> 
         queue.add_schedule("invalid", "pipeline", {}, interval)
 
 
+def test_schedule_rejects_interval_below_timestamp_precision(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+
+    with pytest.raises(ValueError, match="too small to advance"):
+        queue.add_schedule(
+            "unrepresentable",
+            "pipeline",
+            {},
+            1e-9,
+            first_run_at=1_700_000_000,
+        )
+
+
 def test_sub_microsecond_schedule_intervals_do_not_collide(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
     queue.add_schedule("fast", "pipeline", {}, 0.0000001, first_run_at=1000)
