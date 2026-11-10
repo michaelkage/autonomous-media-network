@@ -188,6 +188,10 @@ def test_schedule_can_be_disabled_and_duplicate_ids_are_rejected(tmp_path: Path)
     assert queue.disable_schedule("nightly") is False
     assert queue.enqueue_due_schedules(now=100_000) == 0
     assert queue.list_schedules()[0]["enabled"] is False
+    assert queue.enable_schedule("nightly") is True
+    assert queue.enable_schedule("nightly") is False
+    assert queue.enqueue_due_schedules(now=100_000) == 1
+    assert queue.list_schedules()[0]["enabled"] is True
 
 
 def test_schedule_cli_add_list_tick_and_disable(tmp_path: Path, capsys) -> None:
@@ -220,6 +224,7 @@ def test_schedule_cli_add_list_tick_and_disable(tmp_path: Path, capsys) -> None:
     assert main(["jobs", "schedule", "tick", "--root", root]) == 0
     assert queue.counts()["pending"] == 1
     assert main(["jobs", "schedule", "disable", "--id", "daily-pipeline", "--root", root]) == 0
+    assert main(["jobs", "schedule", "enable", "--id", "daily-pipeline", "--root", root]) == 0
 
 
 def test_concurrent_schedule_ticks_enqueue_once(tmp_path: Path) -> None:
