@@ -32,7 +32,11 @@ def create_app(root: Path = ROOT) -> Any:
         result: dict[str, Any] = {}
         for name in ("inbox", "outbox", "rejected", "build"):
             folder = root / name
-            files = sorted(p.name for p in folder.iterdir() if p.is_file()) if folder.is_dir() else []
+            files = (
+                sorted(p.name for p in folder.iterdir() if p.is_file())
+                if folder.is_dir()
+                else []
+            )
             result[name] = {"count": len(files), "files": files[:200]}
         return result
 
@@ -41,7 +45,9 @@ def create_app(root: Path = ROOT) -> Any:
         config = load_config(config_path)
         for target in config.get("targets", []):
             for key in list(target):
-                if key.lower() in {"token", "access_token", "refresh_token", "password", "secret", "client_secret"}:
+                if key.lower() in {
+                    "token", "access_token", "refresh_token", "password", "secret", "client_secret"
+                }:
                     target.pop(key, None)
         return config
 
