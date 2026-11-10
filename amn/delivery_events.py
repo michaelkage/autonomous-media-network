@@ -78,11 +78,11 @@ def record_delivery_event(
             )
             """
         )
-        columns = {row[1] for row in db.execute("PRAGMA table_info(delivery_events)")}
-        if "provider_message_id" not in columns:
-            db.execute("ALTER TABLE delivery_events ADD COLUMN provider_message_id TEXT")
         db.execute("BEGIN IMMEDIATE")
         try:
+            columns = {row[1] for row in db.execute("PRAGMA table_info(delivery_events)")}
+            if "provider_message_id" not in columns:
+                db.execute("ALTER TABLE delivery_events ADD COLUMN provider_message_id TEXT")
             db.execute(
                 """
                 INSERT INTO delivery_events (
@@ -166,6 +166,12 @@ def delivery_event_snapshot(
                     "SELECT event_type, COUNT(*) AS count FROM delivery_events GROUP BY event_type"
                 )
             }
+            event_columns = {
+                row[1] for row in db.execute("PRAGMA table_info(delivery_events)")
+            }
+            receipt_column = (
+                "provider_message_id" if "provider_message_id" in event_columns else "NULL"
+            )
             recent = [
                 {
                     "id": int(row["id"]),
@@ -176,15 +182,15 @@ def delivery_event_snapshot(
                     "attempt": int(row["attempt"]),
                     "will_retry": bool(row["will_retry"]),
                     "retry_after_seconds": row["retry_after_seconds"],
-                    "provider_message_id": row["provider_message_id"] if "provider_message_id" in row.keys() else None,
+                    "provider_message_id": row["provider_message_id"],
                     "created_at": float(row["created_at"]),
                 }
                 for row in db.execute(
-                    """
-                    SELECT id, delivery_id, platform, output, event_type, attempt,
-                           will_retry, retry_after_seconds, created_at, provider_message_id
-                    FROM delivery_events ORDER BY id DESC LIMIT ?
-                    """,
+                    "SELECT id, delivery_id, platform, output, event_type, attempt, "
+                    "will_retry, retry_after_seconds, created_at, "
+                    + receipt_column
+                    + " AS provider_message_id FROM delivery_events "
+                    "ORDER BY id DESC LIMIT ?",
                     (limit,),
                 )
             ]
