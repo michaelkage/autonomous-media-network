@@ -49,6 +49,10 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         if target_id in ids:
             raise ValueError(f"duplicate target id: {target_id}")
         ids.add(target_id)
+        for field in target:
+            normalized = field.lower()
+            if normalized in {"token", "access_token", "refresh_token", "password", "secret", "client_secret"}:
+                raise ValueError(f"store credentials in environment variables, not config ({field})")
         if target.get("token_env") and not str(target["token_env"]).isidentifier():
             raise ValueError("token_env must be an environment variable name")
     for route, target_ids in data.get("routes", {}).items():
