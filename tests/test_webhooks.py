@@ -356,3 +356,45 @@ def test_tiktok_stalled_threshold_is_validated(tmp_path: Path) -> None:
         assert "between 60 and 86400" in str(exc)
     else:
         raise AssertionError("invalid stale threshold should fail")
+
+
+def test_instagram_operation_snapshot_distinguishes_stalled_and_ambiguous(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    database.parent.mkdir()
+    now = time.time()
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "CREATE TABLE instagram_publish_operations ("
+            "operation_key TEXT PRIMARY KEY, container_id TEXT NOT NULL, "
+            "status TEXT NOT NULL, updated_at REAL NOT NULL, delivery_id TEXT, output TEXT)"
+        )
+        db.executemany(
+            "INSERT INTO instagram_publish_operations "
+            "(operation_key, container_id, status, updated_at, output) VALUES (?, ?, ?, ?, ?)",
+            [
+                ("processing-fresh", "container-fresh", "processing", now, "fresh.jpg"),
+                ("processing-old", "container-old", "processing", now - 3600, "old.jpg"),
+                ("publishing", "container-ambiguous", "publishing", now - 120, "ambiguous.jpg"),
+                ("complete", "container-complete", "complete", now, "complete.jpg"),
+                ("failed", "container-failed", "failed", now, "failed.jpg"),
+            ],
+        )
+
+    snapshot = delivery_event_snapshot(database, stale_after_seconds=900)
+    operations = snapshot["instagram_operations"]
+    assert operations["pending"] == 1
+    assert operations["stalled"] == 1
+    assert operations["reconciliation_required"] == 1
+    assert operations["complete"] == 1
+    assert operations["failed"] == 1
+    assert operations["recent_stalled"][0]["container_id"] == "container-old"
+    assert operations["recent_ambiguous"][0]["container_id"] == "container-ambiguous"
+
+    with sqlite3.connect(database) as db:
+        statuses = dict(
+            db.execute("SELECT container_id, status FROM instagram_publish_operations")
+        )
+    assert statuses["container-old"] == "processing"
+    assert statuses["container-ambiguous"] == "publishing"
