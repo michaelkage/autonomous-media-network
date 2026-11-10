@@ -14,6 +14,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "targets": [],
     "routes": {"default": []},
     "thresholds": {"min_likes": 500, "max_distance": 5},
+    "storage": None,
 }
 
 
@@ -43,6 +44,35 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         or len(set(reddit_sources)) != len(reddit_sources)
     ):
         raise ValueError("sources.reddit must contain unique valid subreddit names")
+
+    storage = data.get("storage")
+    if storage is not None:
+        if not isinstance(storage, dict):
+            raise ValueError("storage must be an object or null")
+        allowed_storage_fields = {
+            "provider", "bucket", "region", "endpoint_url_env",
+            "access_key_env", "secret_key_env", "session_token_env",
+        }
+        if set(storage) - allowed_storage_fields:
+            raise ValueError(
+                f"unsupported storage fields: {sorted(set(storage) - allowed_storage_fields)}"
+            )
+        if storage.get("provider") != "s3":
+            raise ValueError("storage.provider must be 's3'")
+        if not isinstance(storage.get("bucket"), str) or not storage["bucket"].strip():
+            raise ValueError("storage.bucket must be a non-empty string")
+        if "region" in storage and (
+            not isinstance(storage["region"], str) or not storage["region"].strip()
+        ):
+            raise ValueError("storage.region must be a non-empty string")
+        for env_key in (
+            "endpoint_url_env", "access_key_env", "secret_key_env", "session_token_env"
+        ):
+            value = storage.get(env_key)
+            if value is not None and (
+                not isinstance(value, str) or not value.isidentifier()
+            ):
+                raise ValueError(f"storage.{env_key} must be an environment variable name")
 
     targets = data.get("targets", [])
     if not isinstance(targets, list):
@@ -201,6 +231,8 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
     data = json.loads(manifest.read_text(encoding="utf-8"))
     config = validate_config(load_config(root / "config" / "amn.json"))
     totals: dict[str, int] = {}
+    storage_config = config.get("storage")
+    media_storage = None
     for target in config.get("targets", []):
         if not target.get("enabled", True):
             continue
@@ -256,6 +288,17 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
         if not selected:
             totals[target["id"]] = 0
             continue
+        if platform in {"instagram", "tiktok"} and storage_config:
+            if media_storage is None:
+                from .storage import S3MediaStorage
+
+                media_storage = S3MediaStorage.from_config(storage_config)
+            from .storage import StorageBackedPublisher
+
+            publisher = StorageBackedPublisher(
+                publisher, media_storage, str(target["public_base_url"])
+            )
+
         temporary_manifest = root / "build" / f".routed-{target['id']}.json"
         temporary_manifest.write_text(json.dumps({"passed": selected}), encoding="utf-8")
         try:
