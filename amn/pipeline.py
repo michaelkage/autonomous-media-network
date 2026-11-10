@@ -414,12 +414,41 @@ def main(argv: list[str] | None = None) -> int:
     schedule_tick.add_argument("--limit", type=int, default=100)
     schedule_tick.add_argument("--root", type=Path, default=Path.cwd())
 
+    alerts = sub.add_parser("alerts", help="inspect incidents and send deduplicated operator alerts")
+    alert_commands = alerts.add_subparsers(dest="alerts_command", required=True)
+    alert_check = alert_commands.add_parser("check", help="check operational health and notify Telegram")
+    alert_check.add_argument("--stale-after-seconds", type=int, default=900)
+    alert_check.add_argument("--cooldown-seconds", type=int, default=21600)
+    alert_check.add_argument("--root", type=Path, default=Path.cwd())
+
     fetch = sub.add_parser("fetch")
     fetch.add_argument("--source", required=True, choices=["reddit"])
     fetch.add_argument("--query", help="one subreddit; omit to fetch configured Reddit sources")
     fetch.add_argument("--limit", type=int, default=10)
     fetch.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
+
+    if args.command == "alerts":
+        from .operator_alerts import check_operator_alerts
+
+        try:
+            result = check_operator_alerts(
+                args.root / BUILD_DIR / "jobs.sqlite3",
+                bot_token=os.environ.get("TELEGRAM_BOT_TOKEN"),
+                chat_id=os.environ.get("TELEGRAM_CHAT_ID"),
+                stale_after_seconds=args.stale_after_seconds,
+                cooldown_seconds=args.cooldown_seconds,
+            )
+        except (ValueError, OSError) as exc:
+            parser.error(str(exc))
+        print(f"operator alerts: {result}")
+        if not result["notifications_configured"] and result["active"]:
+            print(
+                "warning: incidents were recorded but Telegram notifications are not configured "
+                "(TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID)",
+                file=sys.stderr,
+            )
+        return 0 if not result["failed"] else 1
 
     if args.command == "instagram-reconcile":
         from .instagram_reconciliation import (
