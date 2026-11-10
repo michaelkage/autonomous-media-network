@@ -11,8 +11,8 @@ import sys
 import tempfile
 import threading
 import time
-import uuid
 import tomllib
+import uuid
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -268,7 +268,9 @@ def main(argv: list[str] | None = None) -> int:
     doctor.add_argument("--root", type=Path, default=Path.cwd())
     jobs = sub.add_parser("jobs", help="enqueue, inspect, and run durable jobs")
     job_commands = jobs.add_subparsers(dest="jobs_command", required=True)
-    enqueue = job_commands.add_parser("enqueue", help="enqueue a pipeline, fetch, or routed publish job")
+    enqueue = job_commands.add_parser(
+        "enqueue", help="enqueue a pipeline, fetch, or routed publish job"
+    )
     enqueue.add_argument("--kind", choices=["pipeline", "fetch", "publish"], required=True)
     enqueue.add_argument("--query", help="one subreddit for fetch jobs")
     enqueue.add_argument("--limit", type=int, default=10)
