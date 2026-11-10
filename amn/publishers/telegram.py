@@ -19,13 +19,13 @@ class TelegramPublisher(Publisher):
         self.endpoint = f"https://api.telegram.org/bot{bot_token}"
         self.session = requests.Session()
 
-    def publish(self, image_path: Path, caption: str) -> bool:
+    def _send_file(self, method: str, field: str, path: Path, caption: str) -> bool:
         try:
-            with image_path.open("rb") as image:
+            with path.open("rb") as handle:
                 response = self.session.post(
-                    f"{self.endpoint}/sendPhoto",
+                    f"{self.endpoint}/{method}",
                     data={"chat_id": self.chat_id, "caption": caption[:1024]},
-                    files={"photo": (image_path.name, image, "application/octet-stream")},
+                    files={field: (path.name, handle, "application/octet-stream")},
                     timeout=self.timeout,
                 )
             if response.status_code == 429:
@@ -37,5 +37,12 @@ class TelegramPublisher(Publisher):
                 raise RuntimeError(payload.get("description", "Telegram rejected the post"))
             return True
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
-            print(f"Telegram publish failed: {exc}")
+            print(f"Telegram {method} failed: {exc}")
             return False
+
+    def publish(self, image_path: Path, caption: str) -> bool:
+        return self._send_file("sendPhoto", "photo", image_path, caption)
+
+    def publish_document(self, document_path: Path, caption: str = "AMN delivery manifest") -> bool:
+        """Send the selected delivery manifest as a Telegram document."""
+        return self._send_file("sendDocument", "document", document_path, caption)
