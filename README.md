@@ -1,110 +1,54 @@
-# autonomous-media-network
+# Autonomous Media Network
 
-Hands-off content pipeline: drop images into `inbox/`, run the pipeline, vetted + watermarked assets land in `outbox/` alongside a distribution manifest.
+Local-first media ingestion, deterministic vetting, watermarking, and routed social publishing.
 
-```
-inbox/                     amn run                       outbox/
-  photo.jpg       ──────────────────────────►              photo.jpg (watermarked)
-  photo.json                 │                             manifest.json
-(sidecar metrics)            ▼
-                         rejected/
-                           bad_res.jpg
-                           bad_res.json
-```
-
-## Quick Start
+## Install and test
 
 ```bash
-python -m venv .venv
-# Linux / macOS:
-source .venv/bin/activate
-# Windows:
-.venv\Scripts\activate
-
-pip install -e ".[dev]"
-pytest
-ruff check
+pip install -e ".[dev,dashboard]"
+pytest -q
+ruff check .
+ruff format --check .
 ```
 
-## How It Works
-
-1. **Vetting Engine (`amn.vetting`)**: Pure logic. Assesses each asset against hard limits:
-   - Minimum resolution: default `1080x1080` (rejects anything smaller, e.g. low-res crops, banners with sub-1080 short edges).
-   - Sidecar requirement: every image `foo.ext` must have `foo.json` next to it.
-   - Absolute engagement floor: `min_likes`, default `500`. Enforced for every source.
-   - Engagement rate: `(likes + comments + shares) / views`, minimum `2.0%`, applied **only**
-     when the source reports a real view count. Reddit's public API does not, so this rule
-     is skipped for Reddit rather than fed an invented denominator.
-2. **Watermarking (`amn.watermark`)**: Pillow-driven. Places semi-transparent text with a soft drop shadow in the bottom-right corner, dynamically scaled to the image size. Preserves ICC profiles and EXIF metadata where present.
-3. **Pipeline Orchestrator (`amn.pipeline`)**:
-   - Atomic writes via temporary files.
-   - Idempotent runs.
-   - Moves vetted assets to `outbox/` and rejects to `rejected/`.
-   - Generates SHA-256-verified `manifest.json`.
-
-## CLI Usage
-
-Three subcommands. Thresholds live in `pyproject.toml` under `[tool.amn]`, not in flags.
+## Pipeline
 
 ```bash
-# Pull new media from a source into inbox/
-amn fetch --source reddit --query earthporn --limit 10   # no key needed
-
-**Note:** The Pexels fetcher has been removed. It could not pass the engagement
-gate because it provides no per-photo metrics. Reddit's public `.json` endpoint
-requires no API approval, so it is the only supported source.
-
-# Vet, watermark, and write build/manifest.json
-amn run --watermark "@yourhandle"
-amn run --dry-run        # report only, writes/moves/deletes nothing
-
-# Publish the manifest
-amn publish --platform mock
-amn publish --platform bluesky --handle me.bsky.social   # needs the [bluesky] extra
+amn fetch --source reddit --query earthporn --limit 10
+AMN_WATERMARK_TEXT="@yourhandle" amn run --root .
+amn run --root . --dry-run
+amn publish --platform mock --root .
 ```
 
-## Sidecar Format
+Production runs fail closed when `AMN_WATERMARK_TEXT` is missing. Accepted output names include a content digest, preventing collisions. Writes are atomic, and duplicate-database corruption is surfaced rather than silently disabling protection.
 
-Place alongside the image (e.g. `inbox/post1.png` + `inbox/post1.json`):
+## Distribution and targets
 
-```json
-{
-  "views": 50000,
-  "likes": 2400,
-  "comments": 150,
-  "shares": 320
-}
+Copy `config/amn.example.json` to `config/amn.json`. Routes map item categories to enabled targets. The default route is empty, so content is never broadcast accidentally. Credentials belong in environment variables, not JSON configuration.
+
+Supported publisher adapters currently include Bluesky and Telegram:
+
+```bash
+TELEGRAM_BOT_TOKEN="..." TELEGRAM_CHAT_ID="@your_channel" \
+  amn publish --platform telegram --root .
 ```
 
-Every field defaults to zero, and `views` may be omitted entirely. Two rules apply:
+Publishing resolves manifest paths against the project root and records per-platform delivery state in `build/publish-state.json`. Failed items remain retryable; successful items are skipped on subsequent runs.
 
-- **`min_likes` (default 500)** — an absolute floor, enforced for every source. This is
-  the rule that matters in practice, because it cannot be satisfied by inventing a
-  denominator.
-- **`min_engagement_rate` (default 0.02)** — only checked when the source reports a real
-  `views` count. Reddit's public API never does, so for Reddit this rule is skipped
-  rather than faked.
+Instagram Graph API and TikTok Content Posting API require separate account eligibility, OAuth scopes, media hosting/container workflows, and platform review. They are deliberately not represented as working adapters until those credentials and endpoint flows can be exercised against real test accounts. The publisher interface is the extension boundary; vetting remains platform-agnostic.
 
-An asset with no sidecar is rejected outright.
+## Diagnostics dashboard
 
-## Duplicate Detection
+```bash
+AMN_ROOT="$PWD" AMN_WATERMARK_TEXT="@yourhandle" amn-dashboard --host 127.0.0.1 --port 8765
+```
 
-`build/hashes.json` records a 64-bit Pillow dHash per accepted image. Re-crops,
-resizes and re-compressions land within 5 bits of the original and are rejected; the
-rule lives in `amn.intelligence` and the threshold is `MAX_DISTANCE`.
+Open `http://127.0.0.1:8765`. The optional FastAPI dashboard exposes workspace counts, a redacted configuration view, validated local config updates, and a pipeline trigger. It binds to loopback only. It never returns API secrets. Do not expose it to a network without adding authentication and TLS.
 
-## GitHub Actions
+## Security and operational notes
 
-- `.github/workflows/ci.yml`: tests + `ruff check` + `ruff format --check` on push and PR.
-- `.github/workflows/pipeline.yml`: daily at 06:17 UTC, on `workflow_dispatch`, or when
-  `inbox/` changes. Watermarks assets, commits the results, and uploads the manifest
-  as an artifact.
-
-### Requirements
-
-| Variable | Example | Required? |
-|----------|---------|-----------|
-| `AMN_WATERMARK_TEXT` | `@autonomousmedia` | Yes — unwatermarked output is not the goal |
-| `AMN_PUBLISH` | `true` | No — off by default |
-| `BLUESKY_HANDLE` | `yourname.bsky.social` | Only if `AMN_PUBLISH=true` |
-| `BLUESKY_APP_PASSWORD` | (generate from Bluesky) | Only if `AMN_PUBLISH=true` |
+- Use dedicated platform bot/app credentials with the minimum scopes.
+- Never commit `config/amn.json`, bot tokens, app passwords, or OAuth refresh tokens.
+- Telegram bots must be added to the destination channel with permission to post.
+- Instagram/TikTok reposting must respect creator rights, platform policies, and required attribution.
+- Reddit's public endpoint does not expose view counts; AMN does not fabricate an engagement denominator.
