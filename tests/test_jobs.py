@@ -137,3 +137,18 @@ def test_jobs_cli_enqueues_and_worker_completes_pipeline(tmp_path: Path, monkeyp
 
     queue = JobQueue(tmp_path / "build" / "jobs.sqlite3")
     assert queue.counts()["succeeded"] == 1
+
+
+
+def test_pipeline_jobs_are_serialized_across_workers(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+    first_id = queue.enqueue("pipeline")
+    second_id = queue.enqueue("pipeline")
+
+    first = queue.claim("worker-a", lease_seconds=60)
+
+    assert first is not None and first["id"] == first_id
+    assert queue.claim("worker-b", lease_seconds=60) is None
+    assert queue.complete(first_id, "worker-a")
+    second = queue.claim("worker-b", lease_seconds=60)
+    assert second is not None and second["id"] == second_id
