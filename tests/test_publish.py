@@ -188,9 +188,7 @@ def test_delivery_journal_records_retry_and_terminal_failure(
         def publish(self, image_path: Path, caption: str) -> bool:
             return False
 
-    assert publish_manifest(
-        manifest, AlwaysFails(), platform="retry-journal-test", retries=1
-    ) == 0
+    assert publish_manifest(manifest, AlwaysFails(), platform="retry-journal-test", retries=1) == 0
     snapshot = delivery_event_snapshot(tmp_path / "build" / "jobs.sqlite3")
 
     events = [event for event in snapshot["recent"] if event["output"] == "outbox/one.jpg"]
