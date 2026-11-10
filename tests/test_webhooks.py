@@ -393,8 +393,6 @@ def test_instagram_operation_snapshot_distinguishes_stalled_and_ambiguous(
     assert operations["recent_ambiguous"][0]["container_id"] == "container-ambiguous"
 
     with sqlite3.connect(database) as db:
-        statuses = dict(
-            db.execute("SELECT container_id, status FROM instagram_publish_operations")
-        )
+        statuses = dict(db.execute("SELECT container_id, status FROM instagram_publish_operations"))
     assert statuses["container-old"] == "processing"
     assert statuses["container-ambiguous"] == "publishing"
