@@ -64,7 +64,6 @@ def test_dashboard_saves_only_valid_configuration(tmp_path: Path) -> None:
     assert saved["sources"]["reddit"] == ["earthporn"]
 
 
-
 def test_dashboard_recursively_redacts_secret_values(tmp_path: Path) -> None:
     config_dir = tmp_path / "config"
     config_dir.mkdir()
