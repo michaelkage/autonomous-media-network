@@ -8,7 +8,6 @@ import pytest
 from amn.jobs import JobQueue
 from amn.pipeline import main
 
-
 def test_enqueue_claim_and_complete_round_trip(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "build" / "jobs.sqlite3")
     job_id = queue.enqueue("pipeline", {"root": "/workspace"}, max_attempts=2)
@@ -25,7 +24,6 @@ def test_enqueue_claim_and_complete_round_trip(tmp_path: Path) -> None:
     assert queue.get(job_id)["status"] == "succeeded"
     assert queue.counts() == {"pending": 0, "running": 0, "succeeded": 1, "failed": 0}
 
-
 def test_enqueue_dedupe_key_returns_existing_job(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
     first = queue.enqueue("fetch", {"source": "reddit"}, dedupe_key="fetch:reddit:today")
@@ -34,7 +32,6 @@ def test_enqueue_dedupe_key_returns_existing_job(tmp_path: Path) -> None:
     assert first == second
     assert queue.counts()["pending"] == 1
     assert queue.get(first)["payload"] == {"source": "reddit"}
-
 
 def test_failed_job_retries_then_becomes_terminal(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
@@ -53,7 +50,6 @@ def test_failed_job_retries_then_becomes_terminal(tmp_path: Path) -> None:
     assert job["status"] == "failed"
     assert job["last_error"] == "permanent provider error"
     assert queue.claim("worker-c") is None
-
 
 def test_expired_lease_is_reclaimed_after_worker_crash(tmp_path: Path) -> None:
     database = tmp_path / "jobs.sqlite3"
@@ -74,7 +70,6 @@ def test_expired_lease_is_reclaimed_after_worker_crash(tmp_path: Path) -> None:
     assert recovered["attempts"] == 2
     assert recovered["worker_id"] == "recovery-worker"
 
-
 def test_expired_final_attempt_is_marked_failed(tmp_path: Path) -> None:
     database = tmp_path / "jobs.sqlite3"
     queue = JobQueue(database)
@@ -89,7 +84,6 @@ def test_expired_final_attempt_is_marked_failed(tmp_path: Path) -> None:
     assert queue.claim("worker-b") is None
     assert queue.get(job_id)["status"] == "failed"
 
-
 def test_heartbeat_extends_only_owned_running_job(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
     job_id = queue.enqueue("pipeline")
@@ -97,7 +91,6 @@ def test_heartbeat_extends_only_owned_running_job(tmp_path: Path) -> None:
 
     assert queue.heartbeat(job_id, "worker-b") is False
     assert queue.heartbeat(job_id, "worker-a", lease_seconds=60) is True
-
 
 def test_concurrent_workers_cannot_claim_same_job(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
@@ -112,7 +105,6 @@ def test_concurrent_workers_cannot_claim_same_job(tmp_path: Path) -> None:
     successful = [job for job in claims if job is not None]
     assert len(successful) == 1
 
-
 def test_queue_validates_inputs_and_list_filters(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
     with pytest.raises(ValueError):
@@ -126,8 +118,6 @@ def test_queue_validates_inputs_and_list_filters(tmp_path: Path) -> None:
 
     job_id = queue.enqueue("pipeline")
     assert queue.list(status="pending")[0]["id"] == job_id
-
-
 
 def test_jobs_cli_enqueues_and_worker_completes_pipeline(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "inbox").mkdir()
