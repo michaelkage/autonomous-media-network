@@ -42,11 +42,16 @@ class RedditFetcher:
             payload = post.get("data", {})
             image_url = payload.get("url", "")
             post_id = payload.get("id", "")
-            if not post_id or not image_url.lower().split("?", 1)[0].endswith(_IMAGE_SUFFIXES):
+            if (not post_id or not post_id.isalnum()
+                    or not image_url.startswith("https://")
+                    or not image_url.lower().split("?", 1)[0].endswith(_IMAGE_SUFFIXES)):
                 continue
             image_path, sidecar_path = inbox_dir / f"{post_id}.jpg", inbox_dir / f"{post_id}.json"
-            if image_path.exists() or sidecar_path.exists():
+            if image_path.exists() and sidecar_path.exists():
                 continue
+            # Recover from a process crash between the two final renames.
+            image_path.unlink(missing_ok=True)
+            sidecar_path.unlink(missing_ok=True)
             temp_image = temp_sidecar = None
             try:
                 download = self.session.get(image_url, timeout=(5, 30))
