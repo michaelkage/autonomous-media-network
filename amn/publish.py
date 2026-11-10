@@ -54,6 +54,20 @@ def _cross_process_publish_lock(state_file: Path, platform: str):
         connection.close()
 
 
+def _bind_delivery_context(publisher: Publisher, delivery_id: str, output: str) -> None:
+    """Pass manifest identity through transparent publisher wrappers."""
+    current: Any = publisher
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        try:
+            current._amn_delivery_id = delivery_id
+            current._amn_delivery_output = output
+        except (AttributeError, TypeError):
+            return
+        current = getattr(current, "publisher", None)
+
+
 def _retry_after_from_response(response: Any) -> float | None:
     if response is None:
         return None
@@ -221,6 +235,13 @@ def _publish_manifest_unlocked(
                 attempt=attempt_number,
             )
             try:
+                from .delivery_events import delivery_id_for
+
+                _bind_delivery_context(
+                    publisher,
+                    delivery_id_for(platform_key, delivery_key),
+                    relative.as_posix(),
+                )
                 accepted = publisher.publish(image_path, caption)
             except Exception:
                 record_delivery_event(
