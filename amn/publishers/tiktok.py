@@ -117,6 +117,7 @@ class TikTokPublisher(Publisher):
         self.timeout, self.poll_interval, self.max_polls = timeout, poll_interval, max_polls
         self.session = requests.Session()
         token_key = hashlib.sha256(access_token.encode("utf-8")).hexdigest()
+        self.rate_limit_db = Path(rate_limit_db).resolve() if rate_limit_db else None
         self.rate_limiter = (
             SQLiteTokenRateLimiter(rate_limit_db, token_key)
             if rate_limit_db is not None
@@ -140,52 +141,119 @@ class TikTokPublisher(Publisher):
             raise RuntimeError(f"TikTok API {error.get('code')}: {error.get('message', '')}")
         return result
 
+    def _operation_key(self, image_path: Path, photo_url: str, caption: str) -> str:
+        digest = hashlib.sha256(image_path.read_bytes()).hexdigest()
+        material = "\0".join(
+            (self.headers["Authorization"], digest, photo_url, caption, self.privacy_level)
+        )
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+    def _load_operation(self, operation_key: str) -> tuple[str, str] | None:
+        if self.rate_limit_db is None:
+            return None
+        with closing(sqlite3.connect(self.rate_limit_db, timeout=30)) as db:
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS tiktok_publish_operations ("
+                "operation_key TEXT PRIMARY KEY, publish_id TEXT NOT NULL, "
+                "status TEXT NOT NULL, updated_at REAL NOT NULL)"
+            )
+            row = db.execute(
+                "SELECT publish_id, status FROM tiktok_publish_operations "
+                "WHERE operation_key = ?",
+                (operation_key,),
+            ).fetchone()
+        return (str(row[0]), str(row[1])) if row else None
+
+    def _save_operation(self, operation_key: str, publish_id: str, status: str) -> None:
+        if self.rate_limit_db is None:
+            return
+        with closing(sqlite3.connect(self.rate_limit_db, timeout=30)) as db:
+            db.execute("PRAGMA busy_timeout = 30000")
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                db.execute(
+                    "INSERT INTO tiktok_publish_operations "
+                    "(operation_key, publish_id, status, updated_at) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(operation_key) DO UPDATE SET "
+                    "publish_id = excluded.publish_id, status = excluded.status, "
+                    "updated_at = excluded.updated_at",
+                    (operation_key, publish_id, status, time.time()),
+                )
+                db.commit()
+            except BaseException:
+                db.rollback()
+                raise
+
+    def _delete_operation(self, operation_key: str) -> None:
+        if self.rate_limit_db is None:
+            return
+        with closing(sqlite3.connect(self.rate_limit_db, timeout=30)) as db:
+            db.execute(
+                "DELETE FROM tiktok_publish_operations WHERE operation_key = ?",
+                (operation_key,),
+            )
+            db.commit()
+
     def publish(self, image_path: Path, caption: str) -> bool:
         self.retry_after = None
         if image_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
             print("TikTok photo posts require a supported image")
             return False
         photo_url = f"{self.public_base_url}/{quote(image_path.name)}"
+        operation_key = self._operation_key(image_path, photo_url, caption)
         try:
-            creator = self._request("post/publish/creator_info/query", {})
-            options = creator.get("data", {}).get("privacy_level_options", [])
-            if self.privacy_level not in options:
-                raise RuntimeError(
-                    f"configured privacy level {self.privacy_level!r} is not allowed: {options}"
-                )
+            operation = self._load_operation(operation_key)
+            if operation and operation[1] == "complete":
+                return True
 
-            description = _truncate_utf16(caption, 4000)
-            initialized = self._request(
-                "post/publish/content/init",
-                {
-                    "post_info": {
-                        "title": _truncate_utf16(description, 90),
-                        "description": description,
-                        "privacy_level": self.privacy_level,
+            if operation:
+                publish_id = operation[0]
+            else:
+                creator = self._request("post/publish/creator_info/query", {})
+                options = creator.get("data", {}).get("privacy_level_options", [])
+                if self.privacy_level not in options:
+                    raise RuntimeError(
+                        f"configured privacy level {self.privacy_level!r} is not allowed: {options}"
+                    )
+
+                description = _truncate_utf16(caption, 4000)
+                initialized = self._request(
+                    "post/publish/content/init",
+                    {
+                        "post_info": {
+                            "title": _truncate_utf16(description, 90),
+                            "description": description,
+                            "privacy_level": self.privacy_level,
+                        },
+                        "source_info": {
+                            "source": "PULL_FROM_URL",
+                            "photo_cover_index": 0,
+                            "photo_images": [photo_url],
+                        },
+                        "post_mode": "DIRECT_POST",
+                        "media_type": "PHOTO",
                     },
-                    "source_info": {
-                        "source": "PULL_FROM_URL",
-                        "photo_cover_index": 0,
-                        "photo_images": [photo_url],
-                    },
-                    "post_mode": "DIRECT_POST",
-                    "media_type": "PHOTO",
-                },
-            )
-            publish_id = initialized.get("data", {}).get("publish_id")
-            if not publish_id:
-                raise RuntimeError("TikTok did not return a publish ID")
+                )
+                publish_id = initialized.get("data", {}).get("publish_id")
+                if not publish_id:
+                    raise RuntimeError("TikTok did not return a publish ID")
+                # Persist immediately after TikTok accepts init. A restarted
+                # worker can poll this operation instead of re-posting.
+                self._save_operation(operation_key, str(publish_id), "pending")
 
             for attempt in range(self.max_polls):
                 status = self._request("post/publish/status/fetch", {"publish_id": publish_id})
                 state = status.get("data", {}).get("status")
                 if state == "PUBLISH_COMPLETE":
+                    self._save_operation(operation_key, publish_id, "complete")
                     return True
                 if state == "FAILED":
+                    self._delete_operation(operation_key)
                     raise RuntimeError(status.get("data", {}).get("fail_reason", "post failed"))
                 if attempt + 1 < self.max_polls:
                     time.sleep(self.poll_interval)
-            raise RuntimeError("TikTok post did not complete before the polling deadline")
+            # Keep publish_id pending. Retries and later workers resume polling.
+            raise RuntimeError("TikTok post is still processing; recovery will resume polling")
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
             response = exc.response if isinstance(exc, requests.RequestException) else None
             self.retry_after = _retry_after_from_response(response)
