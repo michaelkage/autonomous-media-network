@@ -75,7 +75,7 @@ def _provider_message_id(publisher: Publisher) -> str | int | None:
     while current is not None and id(current) not in visited:
         visited.add(id(current))
         value = getattr(current, "last_message_id", None)
-        if isinstance(value, int) and not isinstance(value, bool):
+        if isinstance(value, (str, int)) and not isinstance(value, bool) and str(value):
             return value
         current = getattr(current, "publisher", None)
     return None
