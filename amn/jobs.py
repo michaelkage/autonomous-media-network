@@ -358,6 +358,14 @@ class JobQueue:
             ).rowcount
         return changed == 1
 
+    def enable_schedule(self, schedule_id: str) -> bool:
+        with closing(self._connect()) as db:
+            changed = db.execute(
+                "UPDATE schedules SET enabled = 1, updated_at = ? WHERE id = ? AND enabled = 0",
+                (time.time(), schedule_id),
+            ).rowcount
+        return changed == 1
+
     def enqueue_due_schedules(self, *, now: float | None = None, limit: int = 100) -> int:
         current = time.time() if now is None else float(now)
         if not math.isfinite(current):
