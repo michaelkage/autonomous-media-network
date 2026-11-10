@@ -120,7 +120,11 @@ def _record_tiktok_webhook(
                         if event_type == "provider_webhook_failed"
                         else "complete"
                         if event_type
-                        in {"provider_webhook_complete", "provider_webhook_publicly_available"}
+                        in {
+                            "provider_webhook_complete",
+                            "provider_webhook_publicly_available",
+                            "provider_webhook_unavailable",
+                        }
                         else "pending"
                     )
                     db.execute(
@@ -173,7 +177,12 @@ def create_webhook_app(
     async def tiktok_webhook(request: Request) -> dict[str, str]:
         if not secret:
             raise HTTPException(status_code=503, detail="TikTok webhook secret is not configured")
+        content_length = request.headers.get("content-length")
+        if content_length and content_length.isdigit() and int(content_length) > 1_048_576:
+            raise HTTPException(status_code=413, detail="webhook body is too large")
         raw_body = await request.body()
+        if len(raw_body) > 1_048_576:
+            raise HTTPException(status_code=413, detail="webhook body is too large")
         signature = request.headers.get("TikTok-Signature", "")
         if not _verify_tiktok_signature(
             raw_body, signature, secret, now=time.time(), tolerance=tolerance_seconds
