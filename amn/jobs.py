@@ -63,6 +63,21 @@ class JobQueue:
                 """
             )
             db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS schedules (
+                    id TEXT PRIMARY KEY,
+                    kind TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    interval_seconds REAL NOT NULL CHECK (interval_seconds > 0),
+                    next_run_at REAL NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                    last_enqueued_job_id TEXT,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                )
+                """
+            )
+            db.execute(
                 "CREATE INDEX IF NOT EXISTS jobs_ready_idx "
                 "ON jobs(status, available_at, created_at)"
             )
@@ -269,6 +284,129 @@ class JobQueue:
                     "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
                 ).fetchall()
         return [self._decode(row) for row in rows]
+
+    def add_schedule(
+        self,
+        schedule_id: str,
+        kind: str,
+        payload: dict[str, Any] | None,
+        interval_seconds: float,
+        *,
+        first_run_at: float | None = None,
+    ) -> None:
+        if not isinstance(schedule_id, str) or not schedule_id.strip() or len(schedule_id) > 128:
+            raise ValueError("schedule id must be a non-empty string of at most 128 characters")
+        if not isinstance(kind, str) or not kind.strip() or len(kind) > 64:
+            raise ValueError("job kind must be a non-empty string of at most 64 characters")
+        if payload is not None and not isinstance(payload, dict):
+            raise ValueError("schedule payload must be an object")
+        if isinstance(interval_seconds, bool) or interval_seconds <= 0:
+            raise ValueError("interval_seconds must be positive")
+        now = time.time()
+        encoded = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"))
+        with closing(self._connect()) as db:
+            try:
+                db.execute(
+                    """
+                    INSERT INTO schedules (
+                        id, kind, payload, interval_seconds, next_run_at,
+                        enabled, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                    """,
+                    (
+                        schedule_id.strip(),
+                        kind.strip(),
+                        encoded,
+                        float(interval_seconds),
+                        now if first_run_at is None else float(first_run_at),
+                        now,
+                        now,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ValueError(f"schedule already exists: {schedule_id}") from exc
+
+    def list_schedules(self, *, include_disabled: bool = True) -> list[dict[str, Any]]:
+        with closing(self._connect()) as db:
+            if include_disabled:
+                rows = db.execute("SELECT * FROM schedules ORDER BY id").fetchall()
+            else:
+                rows = db.execute(
+                    "SELECT * FROM schedules WHERE enabled = 1 ORDER BY id"
+                ).fetchall()
+        schedules = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = json.loads(item["payload"])
+            item["enabled"] = bool(item["enabled"])
+            schedules.append(item)
+        return schedules
+
+    def disable_schedule(self, schedule_id: str) -> bool:
+        with closing(self._connect()) as db:
+            changed = db.execute(
+                "UPDATE schedules SET enabled = 0, updated_at = ? WHERE id = ? AND enabled = 1",
+                (time.time(), schedule_id),
+            ).rowcount
+        return changed == 1
+
+    def enqueue_due_schedules(self, *, now: float | None = None, limit: int = 100) -> int:
+        current = time.time() if now is None else float(now)
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        enqueued = 0
+        with closing(self._connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            due = db.execute(
+                """
+                SELECT * FROM schedules
+                WHERE enabled = 1 AND next_run_at <= ?
+                ORDER BY next_run_at, id
+                LIMIT ?
+                """,
+                (current, limit),
+            ).fetchall()
+            for schedule in due:
+                scheduled_at = float(schedule["next_run_at"])
+                interval = float(schedule["interval_seconds"])
+                skipped = max(0, int((current - scheduled_at) // interval))
+                next_run = scheduled_at + (skipped + 1) * interval
+                dedupe_key = f"schedule:{schedule['id']}:{scheduled_at:.6f}"
+                job_id = str(uuid.uuid4())
+                cursor = db.execute(
+                    """
+                    INSERT OR IGNORE INTO jobs (
+                        id, kind, payload, status, attempts, max_attempts,
+                        available_at, created_at, updated_at, dedupe_key
+                    ) VALUES (?, ?, ?, 'pending', 0, 5, ?, ?, ?, ?)
+                    """,
+                    (
+                        job_id,
+                        schedule["kind"],
+                        schedule["payload"],
+                        current,
+                        current,
+                        current,
+                        dedupe_key,
+                    ),
+                )
+                if cursor.rowcount == 1:
+                    enqueued += 1
+                else:
+                    existing = db.execute(
+                        "SELECT id FROM jobs WHERE dedupe_key = ?", (dedupe_key,)
+                    ).fetchone()
+                    job_id = str(existing["id"])
+                db.execute(
+                    """
+                    UPDATE schedules
+                    SET next_run_at = ?, last_enqueued_job_id = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (next_run, job_id, current, schedule["id"]),
+                )
+            db.commit()
+        return enqueued
 
     def counts(self) -> dict[str, int]:
         with closing(self._connect()) as db:
