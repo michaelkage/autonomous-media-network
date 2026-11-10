@@ -101,43 +101,103 @@ def record_delivery_event(
 
 
 def delivery_event_snapshot(database: Path, limit: int = 100) -> dict[str, Any]:
-    """Return bounded, sanitized event history and aggregate counts."""
+    """Return bounded delivery history and sanitized provider callback observability."""
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
         raise ValueError("limit must be an integer between 1 and 500")
+    empty = {
+        "counts": {},
+        "recent": [],
+        "webhooks": {
+            "received": 0,
+            "last_received_at": None,
+            "latest_latency_seconds": None,
+        },
+        "tiktok_operations": {"pending": 0, "complete": 0, "failed": 0},
+    }
     if not Path(database).is_file():
-        return {"counts": {}, "recent": []}
+        return empty
 
     with closing(_connect(database)) as db:
         table = db.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'delivery_events'"
         ).fetchone()
         if table is None:
-            return {"counts": {}, "recent": []}
-        counts = {
-            str(row["event_type"]): int(row["count"])
-            for row in db.execute(
-                "SELECT event_type, COUNT(*) AS count FROM delivery_events GROUP BY event_type"
-            )
-        }
-        recent = [
-            {
-                "id": int(row["id"]),
-                "delivery_id": str(row["delivery_id"]),
-                "platform": str(row["platform"]),
-                "output": str(row["output"]),
-                "event_type": str(row["event_type"]),
-                "attempt": int(row["attempt"]),
-                "will_retry": bool(row["will_retry"]),
-                "retry_after_seconds": row["retry_after_seconds"],
-                "created_at": float(row["created_at"]),
+            counts: dict[str, int] = {}
+            recent: list[dict[str, Any]] = []
+        else:
+            counts = {
+                str(row["event_type"]): int(row["count"])
+                for row in db.execute(
+                    "SELECT event_type, COUNT(*) AS count "
+                    "FROM delivery_events GROUP BY event_type"
+                )
             }
+            recent = [
+                {
+                    "id": int(row["id"]),
+                    "delivery_id": str(row["delivery_id"]),
+                    "platform": str(row["platform"]),
+                    "output": str(row["output"]),
+                    "event_type": str(row["event_type"]),
+                    "attempt": int(row["attempt"]),
+                    "will_retry": bool(row["will_retry"]),
+                    "retry_after_seconds": row["retry_after_seconds"],
+                    "created_at": float(row["created_at"]),
+                }
+                for row in db.execute(
+                    """
+                    SELECT id, delivery_id, platform, output, event_type, attempt,
+                           will_retry, retry_after_seconds, created_at
+                    FROM delivery_events ORDER BY id DESC LIMIT ?
+                    """,
+                    (limit,),
+                )
+            ]
+
+        webhook_table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'provider_webhook_receipts'"
+        ).fetchone()
+        webhooks = empty["webhooks"].copy()
+        if webhook_table:
+            columns = {
+                row[1] for row in db.execute("PRAGMA table_info(provider_webhook_receipts)")
+            }
+            event_time = "event_created_at" if "event_created_at" in columns else "NULL"
+            row = db.execute(
+                "SELECT COUNT(*) AS received, MAX(received_at) AS last_received_at "
+                "FROM provider_webhook_receipts WHERE provider = 'tiktok'"
+            ).fetchone()
+            webhooks["received"] = int(row["received"])
+            webhooks["last_received_at"] = row["last_received_at"]
+            latency = db.execute(
+                f"SELECT received_at, {event_time} AS event_created_at "
+                "FROM provider_webhook_receipts "
+                "WHERE provider = 'tiktok' AND event_created_at IS NOT NULL "
+                "ORDER BY received_at DESC LIMIT 1"
+            ).fetchone() if "event_created_at" in columns else None
+            if latency and latency["event_created_at"] is not None:
+                webhooks["latest_latency_seconds"] = max(
+                    0.0, float(latency["received_at"]) - float(latency["event_created_at"])
+                )
+
+        operations_table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'tiktok_publish_operations'"
+        ).fetchone()
+        operations = empty["tiktok_operations"].copy()
+        if operations_table:
             for row in db.execute(
-                """
-                SELECT id, delivery_id, platform, output, event_type, attempt,
-                       will_retry, retry_after_seconds, created_at
-                FROM delivery_events ORDER BY id DESC LIMIT ?
-                """,
-                (limit,),
-            )
-        ]
-    return {"counts": counts, "recent": recent}
+                "SELECT status, COUNT(*) AS count "
+                "FROM tiktok_publish_operations GROUP BY status"
+            ):
+                status = str(row["status"])
+                if status in operations:
+                    operations[status] = int(row["count"])
+
+    return {
+        "counts": counts,
+        "recent": recent,
+        "webhooks": webhooks,
+        "tiktok_operations": operations,
+    }
