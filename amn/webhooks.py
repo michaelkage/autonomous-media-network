@@ -82,9 +82,7 @@ def _record_tiktok_webhook(
             row[1] for row in db.execute("PRAGMA table_info(provider_webhook_receipts)")
         }
         if "event_created_at" not in receipt_columns:
-            db.execute(
-                "ALTER TABLE provider_webhook_receipts ADD COLUMN event_created_at REAL"
-            )
+            db.execute("ALTER TABLE provider_webhook_receipts ADD COLUMN event_created_at REAL")
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS delivery_events (
