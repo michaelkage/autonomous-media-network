@@ -285,6 +285,107 @@ def test_instagram_resumes_existing_container_after_restart(tmp_path: Path) -> N
     assert restarted.session.post.call_args.kwargs["data"]["creation_id"] == "container-1"
 
 
+def test_instagram_archives_expired_container_before_retrying(tmp_path: Path) -> None:
+    import sqlite3
+
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"same-photo-bytes")
+    database = tmp_path / "jobs.sqlite3"
+    publisher = InstagramPublisher(
+        "expired-token",
+        "123456",
+        "https://media.example.com/outbox",
+        operation_db=database,
+        max_polls=1,
+    )
+    publisher.session.post = MagicMock(
+        side_effect=[
+            _response({"id": "expired-container"}),
+            _response({"id": "replacement-container"}),
+            _response({"id": "published-post"}),
+        ]
+    )
+    publisher.session.get = MagicMock(
+        side_effect=[
+            _response({"status_code": "EXPIRED"}),
+            _response({"status_code": "FINISHED"}),
+        ]
+    )
+
+    assert publisher.publish(image, "caption") is False
+    assert publisher.publish(image, "caption") is True
+
+    with sqlite3.connect(database) as db:
+        current = db.execute(
+            "SELECT container_id, status FROM instagram_publish_operations"
+        ).fetchone()
+        history = db.execute(
+            "SELECT container_id, event_kind, container_status FROM instagram_publish_history "
+            "ORDER BY id"
+        ).fetchall()
+
+    assert current == ("replacement-container", "complete")
+    assert history == [
+        ("expired-container", "container_terminal", "EXPIRED"),
+        ("expired-container", "container_replaced", "failed"),
+    ]
+    assert publisher.session.post.call_count == 3
+
+
+def test_instagram_records_structured_provider_error_without_leaking_token(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import sqlite3
+
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    database = tmp_path / "jobs.sqlite3"
+    publisher = InstagramPublisher(
+        "sensitive-access-token",
+        "123456",
+        "https://media.example.com/outbox",
+        operation_db=database,
+    )
+    response = _response(
+        {
+            "error": {
+                "message": "Invalid media URL",
+                "type": "OAuthException",
+                "code": 9007,
+                "error_subcode": 2207052,
+                "fbtrace_id": "trace-123",
+            }
+        },
+        status_code=400,
+    )
+    response.raise_for_status.side_effect = requests.HTTPError(
+        "request failed", response=response
+    )
+    publisher.session.post = MagicMock(return_value=response)
+
+    assert publisher.publish(image, "caption") is False
+
+    with sqlite3.connect(database) as db:
+        history = db.execute(
+            "SELECT event_kind, phase, http_status, error_type, error_code, "
+            "error_subcode, fbtrace_id, message FROM instagram_publish_history"
+        ).fetchone()
+    output = capsys.readouterr().out
+    assert history == (
+        "provider_error",
+        "media_container_create",
+        400,
+        "OAuthException",
+        "9007",
+        "2207052",
+        "trace-123",
+        "Invalid media URL",
+    )
+    assert "9007" in output
+    assert "sensitive-access-token" not in output
+    assert "sensitive-access-token" not in str(history)
+
+
 def test_instagram_does_not_repeat_ambiguous_media_publish(tmp_path: Path) -> None:
     image = tmp_path / "photo.jpg"
     image.write_bytes(b"same-photo-bytes")
