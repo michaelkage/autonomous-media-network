@@ -651,6 +651,7 @@ def main(argv: list[str] | None = None) -> int:
                 media_url,
                 privacy,
                 direct_post_enabled=os.environ.get("TIKTOK_DIRECT_POST_ENABLED") == "true",
+                rate_limit_db=args.root / BUILD_DIR / "jobs.sqlite3",
             )
         manifest_path = args.root / BUILD_DIR / "manifest.json"
         count = publish_manifest(manifest_path, publisher, root=args.root)
