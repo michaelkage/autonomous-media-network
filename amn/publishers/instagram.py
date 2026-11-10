@@ -12,6 +12,8 @@ from ..publish import Publisher, _retry_after_from_response
 
 __all__ = ["InstagramPublisher"]
 
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
 
 class InstagramPublisher(Publisher):
     """Publish a single JPEG through Meta's create-container/publish flow.
@@ -48,8 +50,10 @@ class InstagramPublisher(Publisher):
         if image_path.suffix.lower() not in {".jpg", ".jpeg"}:
             print("Instagram requires JPEG images")
             return False
-        media_url = f"{self.public_base_url}/{quote(image_path.name)}"
         try:
+            if Path(image_path).stat().st_size > _MAX_IMAGE_BYTES:
+                raise ValueError("Instagram image uploads are limited to 8 MiB")
+            media_url = f"{self.public_base_url}/{quote(Path(image_path).name)}"
             created = self.session.post(
                 f"{self.base}/{self.user_id}/media",
                 data={
