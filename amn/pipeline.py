@@ -208,11 +208,21 @@ def _load_checkpoint(path: Path) -> list[dict[str, Any]]:
         raise ValueError("pipeline checkpoint must contain a list")
     entries: list[dict[str, Any]] = []
     for entry in payload:
+        outcome = entry.get("outcome") if isinstance(entry, dict) else None
+        record = entry.get("record") if isinstance(entry, dict) else None
+        valid_record = (
+            isinstance(record, str)
+            if outcome == "error"
+            else isinstance(record, dict)
+        )
         if (
             not isinstance(entry, dict)
             or not isinstance(entry.get("source_name"), str)
+            or not entry["source_name"]
             or not isinstance(entry.get("source_sha256"), str)
-            or entry.get("outcome") not in {"passed", "rejected", "error"}
+            or len(entry["source_sha256"]) != 64
+            or outcome not in {"passed", "rejected", "error"}
+            or not valid_record
         ):
             raise ValueError("pipeline checkpoint contains an invalid entry")
         entries.append(entry)
