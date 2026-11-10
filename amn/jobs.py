@@ -66,10 +66,7 @@ class JobQueue:
                 "CREATE INDEX IF NOT EXISTS jobs_ready_idx "
                 "ON jobs(status, available_at, created_at)"
             )
-            db.execute(
-                "CREATE INDEX IF NOT EXISTS jobs_lease_idx "
-                "ON jobs(status, lease_until)"
-            )
+            db.execute("CREATE INDEX IF NOT EXISTS jobs_lease_idx ON jobs(status, lease_until)")
 
     @staticmethod
     def _decode(row: sqlite3.Row) -> dict[str, Any]:
