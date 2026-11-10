@@ -179,7 +179,6 @@ def test_tiktok_webhook_requires_secret_and_publish_id(tmp_path: Path) -> None:
     assert response.status_code == 400
 
 
-
 def test_tiktok_webhook_correlates_to_manifest_delivery(tmp_path: Path) -> None:
     import hashlib
 
