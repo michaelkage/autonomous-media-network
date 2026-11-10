@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path
 
 import requests
@@ -9,6 +10,9 @@ import requests
 from ..publish import Publisher
 
 __all__ = ["TelegramPublisher"]
+
+_MAX_PHOTO_BYTES = 10 * 1024 * 1024
+_MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
 
 
 class TelegramPublisher(Publisher):
@@ -23,11 +27,17 @@ class TelegramPublisher(Publisher):
     def _send_file(self, method: str, field: str, path: Path, caption: str) -> bool:
         self.retry_after = None
         try:
+            path = Path(path)
+            size_limit = _MAX_PHOTO_BYTES if method == "sendPhoto" else _MAX_DOCUMENT_BYTES
+            if path.stat().st_size > size_limit:
+                limit_mb = size_limit // (1024 * 1024)
+                raise ValueError(f"Telegram {method} uploads are limited to {limit_mb} MiB")
+            content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
             with path.open("rb") as handle:
                 response = self.session.post(
                     f"{self.endpoint}/{method}",
                     data={"chat_id": self.chat_id, "caption": caption[:1024]},
-                    files={field: (path.name, handle, "application/octet-stream")},
+                    files={field: (path.name, handle, content_type)},
                     timeout=self.timeout,
                 )
             if response.status_code == 429:
