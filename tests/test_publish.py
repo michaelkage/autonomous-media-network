@@ -70,7 +70,7 @@ class TestPublishManifest:
             def publish(self, image_path: Path, caption: str) -> bool:
                 return image_path.name == "one.jpg"
 
-        assert publish_manifest(manifest, HalfFails()) == 1
+        assert publish_manifest(manifest, HalfFails(), retries=0) == 1
 
     def test_missing_manifest_is_zero(self, tmp_path: Path):
         assert publish_manifest(tmp_path / "nope.json", MockPublisher()) == 0
