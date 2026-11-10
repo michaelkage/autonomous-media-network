@@ -196,7 +196,9 @@ class TestCli:
         assert main(["run", "--root", str(project), "--watermark", "@amn"]) == 0
         assert "0 passed, 1 rejected" in capsys.readouterr().out
 
-    def test_missing_watermark_fails_closed_without_consuming_assets(self, project, add_asset, capsys):
+    def test_missing_watermark_fails_closed_without_consuming_assets(
+        self, project, add_asset, capsys
+    ):
         add_asset()
         assert main(["run", "--root", str(project)]) == 1
         assert "watermark required" in capsys.readouterr().err
