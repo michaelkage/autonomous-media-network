@@ -346,7 +346,7 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--watermark", default="")
     run_parser.add_argument("--dry-run", action="store_true")
     pub = sub.add_parser("publish")
-    pub.add_argument("--platform", choices=["mock", "bluesky", "telegram", "instagram", "tiktok"])
+    pub.add_argument("--platform", choices=["mock", "bluesky", "telegram", "facebook", "instagram", "tiktok"])
     pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
     pub.add_argument("--root", type=Path, default=Path.cwd())
     doctor = sub.add_parser(
@@ -705,6 +705,7 @@ def main(argv: list[str] | None = None) -> int:
             print("error: --platform or --routed is required", file=sys.stderr)
             return 2
         from .publish import BlueskyPublisher, MockPublisher, publish_manifest
+        from .publishers.facebook import FacebookPagePublisher
         from .publishers.instagram import InstagramPublisher
         from .publishers.telegram import TelegramPublisher
         from .publishers.tiktok import TikTokPublisher
@@ -725,6 +726,13 @@ def main(argv: list[str] | None = None) -> int:
                 print("error: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID required", file=sys.stderr)
                 return 1
             publisher = TelegramPublisher(token, chat_id)
+        elif args.platform == "facebook":
+            token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+            page_id = os.environ.get("FACEBOOK_PAGE_ID")
+            if not token or not page_id:
+                print("error: FACEBOOK_PAGE_ACCESS_TOKEN and FACEBOOK_PAGE_ID required", file=sys.stderr)
+                return 1
+            publisher = FacebookPagePublisher(token, page_id)
         elif args.platform == "instagram":
             token = os.environ.get("INSTAGRAM_ACCESS_TOKEN")
             user_id = os.environ.get("INSTAGRAM_USER_ID")
