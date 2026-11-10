@@ -12,9 +12,6 @@ import tempfile
 import threading
 import time
 import uuid
-import threading
-import time
-import uuid
 import tomllib
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -269,24 +266,6 @@ def main(argv: list[str] | None = None) -> int:
         "doctor", help="run read-only publishing and media-host preflight checks"
     )
     doctor.add_argument("--root", type=Path, default=Path.cwd())
-    jobs = sub.add_parser("jobs", help="enqueue, inspect, and run durable jobs")
-    job_commands = jobs.add_subparsers(dest="jobs_command", required=True)
-    enqueue = job_commands.add_parser("enqueue", help="enqueue a pipeline, fetch, or routed publish job")
-    enqueue.add_argument("--kind", choices=["pipeline", "fetch", "publish"], required=True)
-    enqueue.add_argument("--query", help="one subreddit for fetch jobs")
-    enqueue.add_argument("--limit", type=int, default=10)
-    enqueue.add_argument("--dedupe-key")
-    enqueue.add_argument("--root", type=Path, default=Path.cwd())
-    worker = job_commands.add_parser("worker", help="run queued jobs")
-    worker.add_argument("--once", action="store_true", help="process at most one job then exit")
-    worker.add_argument("--poll-interval", type=float, default=2.0)
-    worker.add_argument("--lease-seconds", type=float, default=3600.0)
-    worker.add_argument("--root", type=Path, default=Path.cwd())
-    job_list = job_commands.add_parser("list", help="show recent durable jobs")
-    job_list.add_argument("--status", choices=["pending", "running", "succeeded", "failed"])
-    job_list.add_argument("--limit", type=int, default=50)
-    job_list.add_argument("--root", type=Path, default=Path.cwd())
-
     jobs = sub.add_parser("jobs", help="enqueue, inspect, and run durable jobs")
     job_commands = jobs.add_subparsers(dest="jobs_command", required=True)
     enqueue = job_commands.add_parser("enqueue", help="enqueue a pipeline, fetch, or routed publish job")
