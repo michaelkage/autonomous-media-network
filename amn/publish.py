@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -25,6 +27,31 @@ _PUBLISH_LOCKS: dict[str, threading.Lock] = {}
 def _publish_lock(key: str) -> threading.Lock:
     with _PUBLISH_LOCKS_LOCK:
         return _PUBLISH_LOCKS.setdefault(key, threading.Lock())
+
+
+@contextmanager
+def _cross_process_publish_lock(state_file: Path, platform: str):
+    """Hold a per-target SQLite write lock across delivery and state persistence.
+
+    SQLite releases the lock automatically if a worker exits unexpectedly. Keep
+    this database beside the state file on a local filesystem; it is not intended
+    for network filesystems.
+    """
+    state_file = state_file.resolve()
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(f"{state_file}::{platform}".encode("utf-8")).hexdigest()[:20]
+    lock_path = state_file.parent / f".{state_file.name}.{key}.lock.sqlite3"
+    connection = sqlite3.connect(lock_path, timeout=300)
+    try:
+        connection.execute("PRAGMA busy_timeout = 300000")
+        connection.execute("BEGIN IMMEDIATE")
+        yield
+        connection.commit()
+    except BaseException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def _retry_after_from_response(response: Any) -> float | None:
@@ -145,7 +172,8 @@ def _publish_manifest_unlocked(
 ) -> int:
     """Publish eligible manifest records once per platform and content digest.
 
-    State is a local JSON file, not a database. A failed item remains retryable.
+    The caller must hold the per-target cross-process lock. State remains a
+    backwards-compatible atomic JSON ledger; failed items remain retryable.
     """
     manifest_path = Path(manifest_path).resolve()
     root = Path(root).resolve() if root else manifest_path.parent.parent.resolve()
@@ -205,18 +233,25 @@ def publish_manifest(
     state_path: Path | None = None,
     retries: int = 3,
 ) -> int:
-    """Serialize local deliveries per target so state and rate limits stay coherent."""
+    """Serialize deliveries per target across threads and local worker processes.
+
+    A per-target SQLite write lock protects the read/publish/write sequence, so
+    concurrent workers cannot both publish an item based on stale JSON state.
+    A crash after remote acceptance but before the state write can still cause
+    an at-least-once duplicate; provider-side idempotency is required to close it.
+    """
     manifest_path = Path(manifest_path).resolve()
     resolved_root = Path(root).resolve() if root else manifest_path.parent.parent.resolve()
     platform_key = platform or type(publisher).__name__.lower()
     state_file = Path(state_path) if state_path else resolved_root / "build" / "publish-state.json"
     lock_key = f"{state_file.resolve()}::{platform_key}"
     with _publish_lock(lock_key):
-        return _publish_manifest_unlocked(
-            manifest_path,
-            publisher,
-            root=resolved_root,
-            platform=platform_key,
-            state_path=state_file,
-            retries=retries,
-        )
+        with _cross_process_publish_lock(state_file, platform_key):
+            return _publish_manifest_unlocked(
+                manifest_path,
+                publisher,
+                root=resolved_root,
+                platform=platform_key,
+                state_path=state_file,
+                retries=retries,
+            )
