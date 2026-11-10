@@ -210,11 +210,7 @@ def _load_checkpoint(path: Path) -> list[dict[str, Any]]:
     for entry in payload:
         outcome = entry.get("outcome") if isinstance(entry, dict) else None
         record = entry.get("record") if isinstance(entry, dict) else None
-        valid_record = (
-            isinstance(record, str)
-            if outcome == "error"
-            else isinstance(record, dict)
-        )
+        valid_record = isinstance(record, str) if outcome == "error" else isinstance(record, dict)
         if (
             not isinstance(entry, dict)
             or not isinstance(entry.get("source_name"), str)
