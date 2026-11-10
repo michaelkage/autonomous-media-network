@@ -128,6 +128,16 @@ def delivery_event_snapshot(
             "stale_after_seconds": stale_after_seconds,
             "recent_stalled": [],
         },
+        "instagram_operations": {
+            "pending": 0,
+            "stalled": 0,
+            "complete": 0,
+            "failed": 0,
+            "reconciliation_required": 0,
+            "stale_after_seconds": stale_after_seconds,
+            "recent_stalled": [],
+            "recent_ambiguous": [],
+        },
     }
     if not Path(database).is_file():
         return empty
