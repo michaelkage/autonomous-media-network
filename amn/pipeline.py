@@ -59,7 +59,9 @@ def load_thresholds(root: Path) -> Thresholds:
     values = dict(config.get("tool", {}).get("amn", {}))
     dynamic = root / "config" / "amn.json"
     if dynamic.is_file():
-        runtime = json.loads(dynamic.read_text(encoding="utf-8"))
+        from .distribution import validate_config
+
+        runtime = validate_config(json.loads(dynamic.read_text(encoding="utf-8")))
         values.update(runtime.get("thresholds", {}))
     return Thresholds.from_mapping(values)
 
@@ -205,11 +207,10 @@ def run(
     runtime_config = root / "config" / "amn.json"
     max_distance = 5
     if runtime_config.is_file():
-        max_distance = int(
-            json.loads(runtime_config.read_text(encoding="utf-8"))
-            .get("thresholds", {})
-            .get("max_distance", 5)
-        )
+        from .distribution import validate_config
+
+        runtime = validate_config(json.loads(runtime_config.read_text(encoding="utf-8")))
+        max_distance = int(runtime.get("thresholds", {}).get("max_distance", 5))
     detector = DuplicateDetector(root / BUILD_DIR / "hashes.json", max_distance=max_distance)
     sources = sorted(
         p for p in inbox.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES
@@ -279,11 +280,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.query:
             sources = [args.query]
         else:
-            from .distribution import load_config
+            from .distribution import load_config, validate_config
 
-            sources = (
-                load_config(args.root / "config" / "amn.json").get("sources", {}).get("reddit", [])
-            )
+            config = validate_config(load_config(args.root / "config" / "amn.json"))
+            sources = config.get("sources", {}).get("reddit", [])
         if not sources:
             print(
                 "error: no Reddit sources configured; pass --query or set sources.reddit",
