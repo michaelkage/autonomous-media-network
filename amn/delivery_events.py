@@ -9,7 +9,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-__all__ = ["record_delivery_event", "delivery_event_snapshot"]
+__all__ = ["delivery_id_for", "record_delivery_event", "delivery_event_snapshot"]
 
 
 def _connect(database: Path) -> sqlite3.Connection:
@@ -19,6 +19,14 @@ def _connect(database: Path) -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA busy_timeout = 30000")
     return connection
+
+
+def delivery_id_for(platform: str, delivery_key: str) -> str:
+    """Return a stable delivery identifier for a platform and its delivery key."""
+    if not platform or not delivery_key:
+        raise ValueError("platform and delivery_key are required")
+    material = f"{platform}\\0{delivery_key}"
+    return hashlib.sha256(material.encode()).hexdigest()
 
 
 def record_delivery_event(
