@@ -71,9 +71,7 @@ def test_storage_backed_publisher_uploads_before_remote_publish(tmp_path: Path) 
     image.write_bytes(b"jpeg")
     storage = MagicMock()
     publisher = RecordingPublisher()
-    backed = StorageBackedPublisher(
-        publisher, storage, "https://cdn.example.com/outbox"
-    )
+    backed = StorageBackedPublisher(publisher, storage, "https://cdn.example.com/outbox")
 
     assert backed.publish(image, "caption") is True
 
