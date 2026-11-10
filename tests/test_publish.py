@@ -7,9 +7,8 @@ import multiprocessing
 import time
 from pathlib import Path
 
-from amn.publish import BlueskyPublisher, MockPublisher, Publisher, publish_manifest
-
 import pytest
+from amn.publish import BlueskyPublisher, MockPublisher, Publisher, publish_manifest
 
 
 
