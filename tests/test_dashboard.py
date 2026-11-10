@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -170,3 +172,41 @@ def test_dashboard_delivery_history_rejects_invalid_stale_threshold(tmp_path: Pa
     client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
     response = client.get("/api/deliveries?stale_after_seconds=30")
     assert response.status_code == 400
+
+
+def test_dashboard_exposes_instagram_reconciliation_audit(tmp_path: Path) -> None:
+    from amn.instagram_reconciliation import resolve_instagram_operation
+
+    database = tmp_path / "build" / "jobs.sqlite3"
+    database.parent.mkdir()
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "CREATE TABLE instagram_publish_operations ("
+            "operation_key TEXT PRIMARY KEY, container_id TEXT NOT NULL, "
+            "status TEXT NOT NULL, updated_at REAL NOT NULL, delivery_id TEXT, output TEXT)"
+        )
+        db.execute(
+            "INSERT INTO instagram_publish_operations "
+            "(operation_key, container_id, status, updated_at, output) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("ambiguous-key", "container-123", "publishing", time.time(), "outbox/post.jpg"),
+        )
+    resolve_instagram_operation(
+        database,
+        operation_key="ambiguous-key",
+        resolution="published",
+        actor="dashboard-test",
+        note="Verified the post is live.",
+    )
+
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+    response = client.get("/api/deliveries")
+
+    assert response.status_code == 200
+    audit = response.json()["instagram_operations"]["resolution_history"]
+    assert len(audit) == 1
+    assert audit[0]["operation_key"] == "ambiguous-key"
+    assert audit[0]["resolution"] == "published"
+    assert audit[0]["actor"] == "dashboard-test"
+    assert "Verified the post is live" in audit[0]["note"]
+    assert "Instagram reconciliation audit" in client.get("/").text
