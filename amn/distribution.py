@@ -93,8 +93,8 @@ def targets_for(item: dict[str, Any], config: dict[str, Any]) -> list[dict[str, 
 def publish_routed_manifest(root: Path) -> dict[str, int]:
     """Dispatch each manifest item only to targets selected by its route."""
     from .publish import BlueskyPublisher, publish_manifest
-    from .publishers.telegram import TelegramPublisher
     from .publishers.instagram import InstagramPublisher
+    from .publishers.telegram import TelegramPublisher
     from .publishers.tiktok import TikTokPublisher
 
     root = Path(root).resolve()
