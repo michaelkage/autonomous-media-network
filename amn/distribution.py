@@ -90,6 +90,8 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
     """Dispatch each manifest item only to targets selected by its route."""
     from .publish import BlueskyPublisher, publish_manifest
     from .publishers.telegram import TelegramPublisher
+    from .publishers.instagram import InstagramPublisher
+    from .publishers.tiktok import TikTokPublisher
 
     root = Path(root).resolve()
     manifest = root / "build" / "manifest.json"
@@ -116,6 +118,24 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
                 print(f"skipping {target['id']}: Bluesky credentials missing")
                 continue
             publisher = BlueskyPublisher(handle, password)
+        elif platform == "instagram":
+            token = os.environ.get(target.get("token_env", "INSTAGRAM_ACCESS_TOKEN"))
+            user_id = target.get("instagram_user_id")
+            media_url = target.get("public_base_url")
+            if not token or not user_id or not media_url:
+                print(f"skipping {target['id']}: Instagram token, user ID or public_base_url missing")
+                continue
+            publisher = InstagramPublisher(token, str(user_id), str(media_url))
+        elif platform == "tiktok":
+            token = os.environ.get(target.get("token_env", "TIKTOK_ACCESS_TOKEN"))
+            media_url = target.get("public_base_url")
+            privacy = target.get("privacy_level")
+            if not token or not media_url or not privacy:
+                print(f"skipping {target['id']}: TikTok token, public_base_url or privacy_level missing")
+                continue
+            publisher = TikTokPublisher(
+                token, str(media_url), str(privacy),
+                direct_post_enabled=target.get("direct_post_enabled", False))
         else:
             print(f"skipping {target['id']}: unsupported platform {platform}")
             continue
