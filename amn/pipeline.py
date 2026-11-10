@@ -303,7 +303,10 @@ def main(argv: list[str] | None = None) -> int:
             publisher = TikTokPublisher(
                 token, media_url, privacy,
                 direct_post_enabled=os.environ.get("TIKTOK_DIRECT_POST_ENABLED") == "true")
-        count = publish_manifest(args.root / BUILD_DIR / "manifest.json", publisher, root=args.root)
+        manifest_path = args.root / BUILD_DIR / "manifest.json"
+        count = publish_manifest(manifest_path, publisher, root=args.root)
+        if args.platform == "telegram" and count:
+            publisher.publish_document(manifest_path)
         print(f"successfully published {count} assets to {args.platform}")
         return 0
     parser.print_help()
