@@ -108,7 +108,10 @@ def test_tiktok_webhook_verifies_signature_and_deduplicates(tmp_path: Path) -> N
     assert events["webhooks"]["last_received_at"] is not None
     assert events["webhooks"]["latest_latency_seconds"] is not None
     assert events["webhooks"]["latest_latency_seconds"] >= 0
-    assert events["tiktok_operations"] == {"pending": 0, "complete": 1, "failed": 0}
+    assert events["tiktok_operations"]["pending"] == 0
+    assert events["tiktok_operations"]["stalled"] == 0
+    assert events["tiktok_operations"]["complete"] == 1
+    assert events["tiktok_operations"]["failed"] == 0
 
 
 def test_tiktok_failed_webhook_marks_operation_retryable(tmp_path: Path) -> None:
@@ -313,3 +316,44 @@ def test_webhook_receipt_table_migrates_legacy_schema(tmp_path: Path) -> None:
         ).fetchone()[0]
     assert "event_created_at" in columns
     assert event_time is not None
+
+
+
+def test_tiktok_pending_operation_becomes_stalled_only_in_snapshot(tmp_path: Path) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    publisher = TikTokPublisher(
+        "test-access-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        rate_limit_db=database,
+    )
+    publisher._save_operation("fresh-operation", "publish-fresh", "pending")
+    publisher._save_operation("old-operation", "publish-old", "pending")
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "UPDATE tiktok_publish_operations SET updated_at = ? WHERE publish_id = ?",
+            (time.time() - 3600, "publish-old"),
+        )
+
+    snapshot = delivery_event_snapshot(database, stale_after_seconds=900)
+    operations = snapshot["tiktok_operations"]
+    assert operations["pending"] == 1
+    assert operations["stalled"] == 1
+    assert operations["stale_after_seconds"] == 900
+    assert operations["recent_stalled"][0]["publish_id"] == "publish-old"
+    assert operations["recent_stalled"][0]["age_seconds"] >= 3600
+
+    with sqlite3.connect(database) as db:
+        statuses = dict(db.execute("SELECT publish_id, status FROM tiktok_publish_operations"))
+    assert statuses == {"publish-fresh": "pending", "publish-old": "pending"}
+
+
+def test_tiktok_stalled_threshold_is_validated(tmp_path: Path) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    try:
+        delivery_event_snapshot(database, stale_after_seconds=30)
+    except ValueError as exc:
+        assert "between 60 and 86400" in str(exc)
+    else:
+        raise AssertionError("invalid stale threshold should fail")
