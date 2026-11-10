@@ -18,13 +18,14 @@ amn fetch --source reddit --query earthporn --limit 10
 AMN_WATERMARK_TEXT="@yourhandle" amn run --root .
 amn run --root . --dry-run
 amn publish --platform mock --root .
+amn publish --routed --root .
 ```
 
 Production runs fail closed when `AMN_WATERMARK_TEXT` is missing. Accepted output names include a content digest, preventing collisions. Writes are atomic, and duplicate-database corruption is surfaced rather than silently disabling protection.
 
 ## Distribution and targets
 
-Copy `config/amn.example.json` to `config/amn.json`. Routes map item categories to enabled targets. The default route is empty, so content is never broadcast accidentally. Credentials belong in environment variables, not JSON configuration.
+Copy `config/amn.example.json` to `config/amn.json`. Routes map item categories/tags in each image sidecar to enabled targets. Example sidecar metadata: `"categories": ["landscape"]`. The default route is empty, so content is never broadcast accidentally. Use `amn publish --routed --root .` to dispatch through those mappings. Credentials belong in environment variables, not JSON configuration.
 
 Supported publisher adapters currently include Bluesky and Telegram:
 
