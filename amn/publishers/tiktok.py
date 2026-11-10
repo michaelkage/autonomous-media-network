@@ -148,15 +148,24 @@ class TikTokPublisher(Publisher):
         )
         return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
+    def _ensure_operations_table(self, db: sqlite3.Connection) -> None:
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS tiktok_publish_operations ("
+            "operation_key TEXT PRIMARY KEY, publish_id TEXT NOT NULL, "
+            "status TEXT NOT NULL, updated_at REAL NOT NULL, "
+            "delivery_id TEXT, output TEXT)"
+        )
+        columns = {row[1] for row in db.execute("PRAGMA table_info(tiktok_publish_operations)")}
+        if "delivery_id" not in columns:
+            db.execute("ALTER TABLE tiktok_publish_operations ADD COLUMN delivery_id TEXT")
+        if "output" not in columns:
+            db.execute("ALTER TABLE tiktok_publish_operations ADD COLUMN output TEXT")
+
     def _load_operation(self, operation_key: str) -> tuple[str, str] | None:
         if self.rate_limit_db is None:
             return None
         with closing(sqlite3.connect(self.rate_limit_db, timeout=30)) as db:
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS tiktok_publish_operations ("
-                "operation_key TEXT PRIMARY KEY, publish_id TEXT NOT NULL, "
-                "status TEXT NOT NULL, updated_at REAL NOT NULL)"
-            )
+            self._ensure_operations_table(db)
             row = db.execute(
                 "SELECT publish_id, status FROM tiktok_publish_operations WHERE operation_key = ?",
                 (operation_key,),
@@ -168,20 +177,26 @@ class TikTokPublisher(Publisher):
             return
         with closing(sqlite3.connect(self.rate_limit_db, timeout=30)) as db:
             db.execute("PRAGMA busy_timeout = 30000")
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS tiktok_publish_operations ("
-                "operation_key TEXT PRIMARY KEY, publish_id TEXT NOT NULL, "
-                "status TEXT NOT NULL, updated_at REAL NOT NULL)"
-            )
+            self._ensure_operations_table(db)
             db.execute("BEGIN IMMEDIATE")
             try:
                 db.execute(
                     "INSERT INTO tiktok_publish_operations "
-                    "(operation_key, publish_id, status, updated_at) VALUES (?, ?, ?, ?) "
+                    "(operation_key, publish_id, status, updated_at, delivery_id, output) "
+                    "VALUES (?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(operation_key) DO UPDATE SET "
                     "publish_id = excluded.publish_id, status = excluded.status, "
-                    "updated_at = excluded.updated_at",
-                    (operation_key, publish_id, status, time.time()),
+                    "updated_at = excluded.updated_at, "
+                    "delivery_id = COALESCE(excluded.delivery_id, tiktok_publish_operations.delivery_id), "
+                    "output = COALESCE(excluded.output, tiktok_publish_operations.output)",
+                    (
+                        operation_key,
+                        publish_id,
+                        status,
+                        time.time(),
+                        getattr(self, "_amn_delivery_id", None),
+                        getattr(self, "_amn_delivery_output", None),
+                    ),
                 )
                 db.commit()
             except BaseException:
