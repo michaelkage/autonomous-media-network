@@ -202,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--watermark", default="")
     run_parser.add_argument("--dry-run", action="store_true")
     pub = sub.add_parser("publish")
-    pub.add_argument("--platform", required=True, choices=["mock", "bluesky", "telegram"])
+    pub.add_argument("--platform", choices=["mock", "bluesky", "telegram"])\n    pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
     pub.add_argument("--root", type=Path, default=Path.cwd())
     fetch = sub.add_parser("fetch")
     fetch.add_argument("--source", required=True, choices=["reddit"])
