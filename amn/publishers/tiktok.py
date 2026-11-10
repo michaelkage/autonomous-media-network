@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -25,6 +27,37 @@ def _limiter_for_token(access_token: str) -> RateLimiter:
         return _TOKEN_LIMITERS.setdefault(token_key, RateLimiter(min_interval=10.0))
 
 
+
+class SQLiteTokenRateLimiter:
+    """Reserve request slots transactionally across local worker processes."""
+
+    def __init__(self, database: Path, token_key: str, min_interval: float = 10.0) -> None:
+        if min_interval <= 0:
+            raise ValueError("min_interval must be positive")
+        self.database = Path(database).resolve()
+        self.database.parent.mkdir(parents=True, exist_ok=True)
+        self.token_key = token_key
+        self.min_interval = min_interval
+
+    def wait(self) -> None:
+        with closing(sqlite3.connect(self.database, timeout=30, isolation_level=None)) as db:
+            db.execute("PRAGMA busy_timeout = 30000")
+            db.execute("CREATE TABLE IF NOT EXISTS provider_rate_limits (token_key TEXT PRIMARY KEY, next_allowed_at REAL NOT NULL)")
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                now = time.time()
+                row = db.execute("SELECT next_allowed_at FROM provider_rate_limits WHERE token_key = ?", (self.token_key,)).fetchone()
+                slot = max(now, row[0] if row else now)
+                db.execute("INSERT INTO provider_rate_limits(token_key, next_allowed_at) VALUES (?, ?) ON CONFLICT(token_key) DO UPDATE SET next_allowed_at = excluded.next_allowed_at", (self.token_key, slot + self.min_interval))
+                db.commit()
+            except BaseException:
+                db.rollback()
+                raise
+        delay = slot - now
+        if delay > 0:
+            time.sleep(delay)
+
+
 def _truncate_utf16(value: str, max_units: int) -> str:
     result: list[str] = []
     used = 0
@@ -42,8 +75,8 @@ class TikTokPublisher(Publisher):
 
     TikTok's photo API uses PULL_FROM_URL, so the configured domain/prefix must
     be verified in the TikTok developer app. Direct posting requires video.publish.
-    Request spacing is shared by access token within this process; deployments
-    with multiple worker processes must coordinate the same token's rate limit.
+    Request spacing is shared by access token across local worker processes when
+    rate_limit_db is supplied. The default in-memory limiter is process-local.
     """
 
     API = "https://open.tiktokapis.com/v2"
@@ -58,6 +91,7 @@ class TikTokPublisher(Publisher):
         timeout: float = 30.0,
         poll_interval: float = 5.0,
         max_polls: int = 24,
+        rate_limit_db: Path | None = None,
     ) -> None:
         parsed = urlparse(public_base_url)
         if not access_token:
@@ -72,7 +106,12 @@ class TikTokPublisher(Publisher):
         self.privacy_level = privacy_level
         self.timeout, self.poll_interval, self.max_polls = timeout, poll_interval, max_polls
         self.session = requests.Session()
-        self.rate_limiter = _limiter_for_token(access_token)
+        token_key = hashlib.sha256(access_token.encode("utf-8")).hexdigest()
+        self.rate_limiter = (
+            SQLiteTokenRateLimiter(rate_limit_db, token_key)
+            if rate_limit_db is not None
+            else _limiter_for_token(access_token)
+        )
         self.retry_after: float | None = None
         self.headers = {
             "Authorization": f"Bearer {self.token}",
