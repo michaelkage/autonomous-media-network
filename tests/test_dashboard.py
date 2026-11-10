@@ -226,6 +226,33 @@ def test_dashboard_exposes_instagram_container_and_provider_error_history(
     assert history[0]["message"] == "Invalid media URL"
 
 
+def test_dashboard_exposes_sanitized_operator_alert_history(tmp_path: Path) -> None:
+    from amn.operator_alerts import check_operator_alerts
+
+    database = tmp_path / "build" / "jobs.sqlite3"
+    database.parent.mkdir()
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "CREATE TABLE jobs (id TEXT PRIMARY KEY, kind TEXT, status TEXT, "
+            "attempts INTEGER, max_attempts INTEGER, updated_at REAL)"
+        )
+        db.execute(
+            "INSERT INTO jobs VALUES ('job-private-id', 'publish', 'failed', 3, 3, ?)",
+            (time.time(),),
+        )
+    check_operator_alerts(database, bot_token=None, chat_id=None)
+
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+    response = client.get("/api/alerts?limit=10")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["counts"]["active"] == 1
+    assert payload["recent"][0]["kind"] == "job_failed"
+    assert payload["recent"][0]["status"] == "active"
+    assert "last_error" in payload["recent"][0]
+
+
 def test_dashboard_delivery_history_rejects_invalid_limit(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
     response = client.get("/api/deliveries?limit=501")
