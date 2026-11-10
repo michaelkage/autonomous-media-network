@@ -259,7 +259,9 @@ def main(argv: list[str] | None = None) -> int:
     pub.add_argument("--platform", choices=["mock", "bluesky", "telegram", "instagram", "tiktok"])
     pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
     pub.add_argument("--root", type=Path, default=Path.cwd())
-    doctor = sub.add_parser("doctor", help="run read-only publishing and media-host preflight checks")
+    doctor = sub.add_parser(
+        "doctor", help="run read-only publishing and media-host preflight checks"
+    )
     doctor.add_argument("--root", type=Path, default=Path.cwd())
     fetch = sub.add_parser("fetch")
     fetch.add_argument("--source", required=True, choices=["reddit"])
