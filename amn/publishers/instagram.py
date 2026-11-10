@@ -117,10 +117,133 @@ class InstagramPublisher(Publisher):
                 db.rollback()
                 raise
 
+    def _record_history(
+        self,
+        operation_key: str,
+        *,
+        event_kind: str,
+        container_id: str | None = None,
+        container_status: str | None = None,
+        phase: str | None = None,
+        http_status: int | None = None,
+        error_type: str | None = None,
+        error_code: int | str | None = None,
+        error_subcode: int | str | None = None,
+        fbtrace_id: str | None = None,
+        message: str | None = None,
+    ) -> None:
+        if self.operation_db is None:
+            return
+        self.operation_db.parent.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(self.operation_db, timeout=30)) as db:
+            db.execute("PRAGMA busy_timeout = 30000")
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS instagram_publish_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    operation_key TEXT NOT NULL,
+                    container_id TEXT,
+                    event_kind TEXT NOT NULL,
+                    container_status TEXT,
+                    phase TEXT,
+                    http_status INTEGER,
+                    error_type TEXT,
+                    error_code TEXT,
+                    error_subcode TEXT,
+                    fbtrace_id TEXT,
+                    message TEXT,
+                    delivery_id TEXT,
+                    output TEXT,
+                    created_at REAL NOT NULL
+                )
+                """
+            )
+            db.execute(
+                """
+                INSERT INTO instagram_publish_history (
+                    operation_key, container_id, event_kind, container_status,
+                    phase, http_status, error_type, error_code, error_subcode,
+                    fbtrace_id, message, delivery_id, output, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    operation_key,
+                    container_id,
+                    event_kind,
+                    container_status,
+                    phase,
+                    http_status,
+                    str(error_type)[:120] if error_type is not None else None,
+                    str(error_code)[:80] if error_code is not None else None,
+                    str(error_subcode)[:80] if error_subcode is not None else None,
+                    str(fbtrace_id)[:120] if fbtrace_id is not None else None,
+                    message[:500] if message else None,
+                    getattr(self, "_amn_delivery_id", None),
+                    getattr(self, "_amn_delivery_output", None),
+                    time.time(),
+                ),
+            )
+            db.commit()
+
+    def _record_provider_error(
+        self, operation_key: str, container_id: str | None, phase: str, exc: Exception
+    ) -> str:
+        response = exc.response if isinstance(exc, requests.RequestException) else None
+        payload: dict = {}
+        if response is not None:
+            try:
+                body = response.json()
+                if isinstance(body, dict) and isinstance(body.get("error"), dict):
+                    payload = body["error"]
+            except (ValueError, TypeError):
+                pass
+        message = str(payload.get("message") or type(exc).__name__)
+        if self.token:
+            message = message.replace(self.token, "[REDACTED]")
+        message = message.replace("\\n", " ")[:500]
+        error_type = payload.get("type")
+        error_code = payload.get("code")
+        error_subcode = payload.get("error_subcode")
+        fbtrace_id = payload.get("fbtrace_id")
+        http_status = getattr(response, "status_code", None)
+        self._record_history(
+            operation_key,
+            event_kind="provider_error",
+            container_id=container_id,
+            phase=phase,
+            http_status=http_status,
+            error_type=str(error_type) if error_type is not None else None,
+            error_code=error_code,
+            error_subcode=error_subcode,
+            fbtrace_id=str(fbtrace_id) if fbtrace_id is not None else None,
+            message=message,
+        )
+        details = f"HTTP {http_status}" if http_status is not None else type(exc).__name__
+        if error_code is not None:
+            details += f", code={error_code}"
+        if error_subcode is not None:
+            details += f", subcode={error_subcode}"
+        if error_type:
+            details += f", type={error_type}"
+        return f"Instagram {phase} failed ({details}): {message}"
+
     def _delete_operation(self, operation_key: str) -> None:
         if self.operation_db is None:
             return
         with closing(sqlite3.connect(self.operation_db, timeout=30)) as db:
+            row = db.execute(
+                "SELECT container_id, status FROM instagram_publish_operations "
+                "WHERE operation_key = ?",
+                (operation_key,),
+            ).fetchone()
+            if row is not None:
+                self._record_history(
+                    operation_key,
+                    event_kind="container_replaced",
+                    container_id=str(row[0]),
+                    container_status=str(row[1]),
+                    message="Terminal operation archived before retry with a new container",
+                )
             db.execute(
                 "DELETE FROM instagram_publish_operations WHERE operation_key = ?",
                 (operation_key,),
@@ -142,6 +265,9 @@ class InstagramPublisher(Publisher):
     def publish(self, image_path: Path, caption: str) -> bool:
         self.retry_after = None
         image_path = Path(image_path)
+        operation_key: str | None = None
+        container_id: str | None = None
+        phase = "media_container_create"
         if image_path.suffix.lower() not in {".jpg", ".jpeg"}:
             print("Instagram requires JPEG images")
             return False
@@ -159,6 +285,7 @@ class InstagramPublisher(Publisher):
                 operation = None
 
             if operation is None:
+                phase = "media_container_create"
                 created = self.session.post(
                     f"{self.base}/{self.user_id}/media",
                     data={
@@ -177,11 +304,20 @@ class InstagramPublisher(Publisher):
             else:
                 container_id, operation_status = operation
 
+            phase = "container_status"
             status = self._container_status(container_id)
             if status == "PUBLISHED":
                 self._save_operation(operation_key, container_id, "complete")
                 return True
             if status in {"ERROR", "EXPIRED"}:
+                self._record_history(
+                    operation_key,
+                    event_kind="container_terminal",
+                    container_id=container_id,
+                    container_status=status,
+                    phase="container_status",
+                    message=f"Instagram media container reached terminal status {status}",
+                )
                 self._save_operation(operation_key, container_id, "failed")
                 raise RuntimeError(f"Instagram container status: {status}")
             if status == "IN_PROGRESS":
@@ -189,6 +325,7 @@ class InstagramPublisher(Publisher):
                     self._save_operation(operation_key, container_id, "processing")
                 for _ in range(self.max_polls - 1):
                     time.sleep(self.poll_interval)
+                    phase = "container_status"
                     status = self._container_status(container_id)
                     if status != "IN_PROGRESS":
                         break
@@ -212,6 +349,7 @@ class InstagramPublisher(Publisher):
                 )
 
             self._save_operation(operation_key, container_id, "publishing")
+            phase = "media_publish"
             published = self.session.post(
                 f"{self.base}/{self.user_id}/media_publish",
                 data={"creation_id": container_id, "access_token": self.token},
@@ -225,5 +363,12 @@ class InstagramPublisher(Publisher):
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
             response = exc.response if isinstance(exc, requests.RequestException) else None
             self.retry_after = _retry_after_from_response(response)
-            print(f"Instagram publish failed: {exc}")
+            if operation_key is not None and isinstance(exc, requests.RequestException):
+                try:
+                    detail = self._record_provider_error(operation_key, container_id, phase, exc)
+                except (OSError, sqlite3.Error):
+                    detail = f"Instagram {phase} failed: {type(exc).__name__}"
+            else:
+                detail = str(exc).replace(self.token, "[REDACTED]") if self.token else str(exc)
+            print(f"Instagram publish failed: {detail}")
             return False
