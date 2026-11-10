@@ -166,7 +166,6 @@ def test_dashboard_delivery_history_rejects_invalid_limit(tmp_path: Path) -> Non
     assert response.status_code == 400
 
 
-
 def test_dashboard_delivery_history_rejects_invalid_stale_threshold(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
     response = client.get("/api/deliveries?stale_after_seconds=30")
