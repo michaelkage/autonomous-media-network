@@ -113,11 +113,12 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         "password_env",
         "chat_id",
         "instagram_user_id",
+        "facebook_page_id",
         "public_base_url",
         "privacy_level",
         "direct_post_enabled",
     }
-    supported_platforms = {"telegram", "bluesky", "instagram", "tiktok"}
+    supported_platforms = {"telegram", "bluesky", "instagram", "tiktok", "facebook"}
     ids: set[str] = set()
     for target in targets:
         if not isinstance(target, dict):
@@ -145,7 +146,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(
                     f"target {target_id!r}: {env_key} must be an environment variable name"
                 )
-        for string_key in ("chat_id", "instagram_user_id", "public_base_url", "privacy_level"):
+        for string_key in ("chat_id", "instagram_user_id", "facebook_page_id", "public_base_url", "privacy_level"):
             value = target.get(string_key)
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"target {target_id!r}: {string_key} must be a non-empty string")
@@ -159,6 +160,9 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             parsed = urlparse(media_url)
             if parsed.scheme != "https" or not parsed.netloc:
                 raise ValueError(f"target {target_id!r}: public_base_url must use HTTPS")
+        if platform.lower() == "facebook" and target.get("enabled", True):
+            if not re.fullmatch(r"[0-9]+", target.get("facebook_page_id", "")):
+                raise ValueError(f"target {target_id!r}: facebook_page_id must be numeric")
         if platform.lower() == "instagram" and target.get("enabled", True):
             if not re.fullmatch(r"[0-9]+", target.get("instagram_user_id", "")):
                 raise ValueError(f"target {target_id!r}: instagram_user_id must be numeric")
@@ -226,6 +230,7 @@ class _TelegramDocumentAdapter:
 def publish_routed_manifest(root: Path) -> dict[str, int]:
     """Dispatch each manifest item only to targets selected by its route."""
     from .publish import BlueskyPublisher, publish_manifest
+    from .publishers.facebook import FacebookPagePublisher
     from .publishers.instagram import InstagramPublisher
     from .publishers.telegram import TelegramPublisher
     from .publishers.tiktok import TikTokPublisher
@@ -257,6 +262,13 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
                 print(f"skipping {target['id']}: Bluesky credentials missing")
                 continue
             publisher = BlueskyPublisher(handle, password)
+        elif platform == "facebook":
+            token = os.environ.get(target.get("token_env", "FACEBOOK_PAGE_ACCESS_TOKEN"))
+            page_id = target.get("facebook_page_id")
+            if not token or not page_id:
+                print(f"skipping {target['id']}: Facebook Page token or page ID missing")
+                continue
+            publisher = FacebookPagePublisher(token, str(page_id))
         elif platform == "instagram":
             token = os.environ.get(target.get("token_env", "INSTAGRAM_ACCESS_TOKEN"))
             user_id = target.get("instagram_user_id")
