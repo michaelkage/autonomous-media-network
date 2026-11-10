@@ -257,9 +257,7 @@ class JobQueue:
             try:
                 retry_delay = float(retry_delay)
             except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    "retry_delay must be a finite non-negative number"
-                ) from exc
+                raise ValueError("retry_delay must be a finite non-negative number") from exc
             if (
                 not math.isfinite(retry_delay)
                 or retry_delay < 0
