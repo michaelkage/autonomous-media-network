@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AMN Diagnostics</title>
+<style>
+body{font:16px system-ui;max-width:900px;margin:40px auto;padding:0 18px;background:#10151d;color:#e8edf4}
+section{background:#1b2532;padding:18px;border-radius:12px;margin:14px 0}
+label{display:block;margin:14px 0}
+input{width:100%}
+button{padding:10px 16px;border:0;border-radius:8px;cursor:pointer}
+pre{white-space:pre-wrap}
+textarea{width:100%;font:13px monospace;background:#0b1017;color:#e8edf4}
+</style>
+</head>
+<body>
+<h1>Autonomous Media Network</h1>
+<section><h2>Workspace</h2><pre id="status">Loading…</pre></section>
+<section>
+<h2>Curation controls</h2>
+<label>Minimum likes: <b id="likesValue">500</b>
+<input id="likes" type="range" min="0" max="10000" step="50"></label>
+<label>Maximum dHash distance: <b id="distanceValue">5</b>
+<input id="distance" type="range" min="0" max="64"></label>
+<h3>Sources, routes and target accounts</h3>
+<p>Configure target IDs, platform names, handles/chat IDs, environment-variable credential
+references, source lists and category routes. Secret values stay in the process environment.</p>
+<textarea id="configEditor" rows="18"></textarea>
+<button onclick="saveConfig()">Save configuration</button>
+<button onclick="runPipeline()">Run pipeline</button>
+<pre id="message"></pre>
+</section>
+<script>
+let config;
+async function load() {
+  const statusResponse = await fetch("/api/status");
+  document.querySelector("#status").textContent =
+    JSON.stringify(await statusResponse.json(), null, 2);
+  config = await (await fetch("/api/config")).json();
+  configEditor.value = JSON.stringify(config, null, 2);
+  likes.value = config.thresholds.min_likes ?? 500;
+  distance.value = config.thresholds.max_distance ?? 5;
+  likesValue.textContent = likes.value;
+  distanceValue.textContent = distance.value;
+}
+likes.oninput = () => { likesValue.textContent = likes.value; };
+distance.oninput = () => { distanceValue.textContent = distance.value; };
+async function saveConfig() {
+  try {
+    config = JSON.parse(configEditor.value);
+    config.thresholds = {
+      ...config.thresholds,
+      min_likes: +likes.value,
+      max_distance: +distance.value
+    };
+    const response = await fetch("/api/config", {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(config)
+    });
+    message.textContent = await response.text();
+    if (response.ok) configEditor.value = JSON.stringify(config, null, 2);
+  } catch (error) {
+    message.textContent = "Invalid JSON: " + error.message;
+  }
+}
+async function runPipeline() {
+  const response = await fetch("/api/run", {method: "POST"});
+  message.textContent = await response.text();
+  load();
+}
+load();
+</script>
+</body>
+</html>
