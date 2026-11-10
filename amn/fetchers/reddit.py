@@ -54,9 +54,15 @@ class RedditFetcher:
                 content = download.content
                 if not content:
                     raise ValueError("empty image response")
-                metrics = {"likes": max(0, int(payload.get("score") or 0)),
-                           "comments": max(0, int(payload.get("num_comments") or 0)),
-                           "shares": 0}
+                metrics = {
+                    "likes": max(0, int(payload.get("score") or 0)),
+                    "comments": max(0, int(payload.get("num_comments") or 0)),
+                    "shares": 0,
+                    "source": "reddit",
+                    "subreddit": subreddit_name,
+                    "source_id": post_id,
+                    "permalink": f"https://www.reddit.com{payload.get('permalink', '')}",
+                }
                 with tempfile.NamedTemporaryFile(dir=inbox_dir, delete=False) as f:
                     temp_image = Path(f.name)
                     f.write(content)
