@@ -66,8 +66,9 @@ async function runPipeline(){const r=await fetch("/api/run",{method:"POST"});mes
     def get_config() -> dict[str, Any]:
         config = load_config(config_path)
         for target in config.get("targets", []):
-            target.pop("token", None)
-            target.pop("password", None)
+            for key in list(target):
+                if key.lower() in {"token", "access_token", "refresh_token", "password", "secret", "client_secret"}:
+                    target.pop(key, None)
         return config
 
     @app.put("/api/config")
