@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,dashboard]"
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
