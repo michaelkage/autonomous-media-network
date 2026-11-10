@@ -163,3 +163,68 @@ def test_tiktok_sqlite_rate_limiter_coordinates_publisher_instances(
     first.wait()
     second.wait()
     assert sleeps == [10.0]
+
+
+def test_tiktok_resumes_pending_publish_after_restart(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"same-photo-bytes")
+    database = tmp_path / "jobs.sqlite3"
+    first = TikTokPublisher(
+        "recovery-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        rate_limit_db=database,
+        max_polls=1,
+        poll_interval=0,
+    )
+    first.session.post = MagicMock(
+        side_effect=[
+            _response({"data": {"privacy_level_options": ["SELF_ONLY"]}}),
+            _response({"data": {"publish_id": "durable-publish-id"}}),
+            _response({"data": {"status": "PROCESSING_DOWNLOAD"}}),
+        ]
+    )
+
+    with patch("amn.publishers.tiktok.SQLiteTokenRateLimiter.wait", return_value=None):
+        assert first.publish(image, "caption") is False
+
+    restarted = TikTokPublisher(
+        "recovery-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        rate_limit_db=database,
+        max_polls=1,
+        poll_interval=0,
+    )
+    restarted.session.post = MagicMock(
+        return_value=_response({"data": {"status": "PUBLISH_COMPLETE"}})
+    )
+
+    with patch("amn.publishers.tiktok.SQLiteTokenRateLimiter.wait", return_value=None):
+        assert restarted.publish(image, "caption") is True
+
+    assert restarted.session.post.call_count == 1
+    assert restarted.session.post.call_args.kwargs["json"] == {
+        "publish_id": "durable-publish-id"
+    }
+
+
+def test_tiktok_completed_operation_is_not_submitted_again(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"same-photo-bytes")
+    database = tmp_path / "jobs.sqlite3"
+    publisher = TikTokPublisher(
+        "completed-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        rate_limit_db=database,
+    )
+    publisher._save_operation("operation-key", "publish-id", "complete")
+    publisher._operation_key = lambda *_args: "operation-key"
+    publisher.session.post = MagicMock()
+
+    assert publisher.publish(image, "caption") is True
+    publisher.session.post.assert_not_called()
