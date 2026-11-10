@@ -91,3 +91,47 @@ def test_pipeline_fails_closed_without_watermark(tmp_path: Path) -> None:
     result = run(tmp_path, watermark_text="")
     assert result.errors
     assert "watermark required" in result.errors[0]
+
+
+
+def test_config_rejects_invalid_target_platform_and_non_integer_thresholds() -> None:
+    with pytest.raises(ValueError, match="unsupported platform"):
+        validate_config(
+            {
+                "targets": [{"id": "bad", "platform": "unknown"}],
+                "routes": {},
+                "thresholds": {"min_likes": 500, "max_distance": 5},
+            }
+        )
+    with pytest.raises(ValueError, match="non-negative integer"):
+        validate_config(
+            {
+                "targets": [],
+                "routes": {},
+                "thresholds": {"min_likes": True, "max_distance": 5},
+            }
+        )
+
+
+def test_example_config_validates_with_disabled_tiktok_target() -> None:
+    example = Path(__file__).resolve().parent.parent / "config" / "amn.example.json"
+    assert validate_config(json.loads(example.read_text(encoding="utf-8")))
+
+
+def test_enabled_tiktok_target_requires_explicit_direct_post() -> None:
+    with pytest.raises(ValueError, match="direct_post_enabled"):
+        validate_config(
+            {
+                "targets": [
+                    {
+                        "id": "tiktok-main",
+                        "platform": "tiktok",
+                        "enabled": True,
+                        "public_base_url": "https://media.example.com/outbox",
+                        "privacy_level": "SELF_ONLY",
+                    }
+                ],
+                "routes": {},
+                "thresholds": {"min_likes": 500, "max_distance": 5},
+            }
+        )
