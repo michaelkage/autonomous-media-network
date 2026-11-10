@@ -310,6 +310,8 @@ class JobQueue:
             raise ValueError("schedule timing values must be numbers") from exc
         if not math.isfinite(interval) or interval <= 0 or not math.isfinite(first_run):
             raise ValueError("schedule timing values must be finite and interval positive")
+        if first_run + interval <= first_run:
+            raise ValueError("interval_seconds is too small to advance the scheduled timestamp")
         now = time.time()
         encoded = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"))
         with closing(self._connect()) as db:
@@ -389,6 +391,10 @@ class JobQueue:
                 interval = float(schedule["interval_seconds"])
                 skipped = max(0, int((current - scheduled_at) // interval))
                 next_run = scheduled_at + (skipped + 1) * interval
+                if not math.isfinite(next_run) or next_run <= current:
+                    raise ValueError(
+                        f"schedule {schedule['id']!r} interval cannot advance beyond the current timestamp"
+                    )
                 dedupe_key = f"schedule:{schedule['id']}:{scheduled_at.hex()}"
                 job_id = str(uuid.uuid4())
                 cursor = db.execute(
