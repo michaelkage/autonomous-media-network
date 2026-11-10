@@ -79,10 +79,10 @@ class RedditPublisher(Publisher):
                 "https://oauth.reddit.com/api/submit",
                 data={
                     "sr": self.subreddit,
+                    "api_type": "json",
                     "kind": "link",
                     "title": title,
                     "url": image_url,
-                    "resubmit": "false",
                     "sendreplies": "true",
                 },
                 timeout=self.timeout,
