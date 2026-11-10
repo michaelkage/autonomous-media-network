@@ -20,9 +20,17 @@ class InstagramPublisher(Publisher):
     the exact files in outbox; local filesystem paths are never uploaded directly.
     """
 
-    def __init__(self, access_token: str, instagram_user_id: str, public_base_url: str,
-                 *, api_version: str = "v25.0", timeout: float = 30.0,
-                 poll_interval: float = 60.0, max_polls: int = 5) -> None:
+    def __init__(
+        self,
+        access_token: str,
+        instagram_user_id: str,
+        public_base_url: str,
+        *,
+        api_version: str = "v25.0",
+        timeout: float = 30.0,
+        poll_interval: float = 60.0,
+        max_polls: int = 5,
+    ) -> None:
         parsed = urlparse(public_base_url)
         if not access_token or not instagram_user_id:
             raise ValueError("Instagram access token and user ID are required")
@@ -42,8 +50,11 @@ class InstagramPublisher(Publisher):
         try:
             created = self.session.post(
                 f"{self.base}/{self.user_id}/media",
-                data={"image_url": media_url, "caption": caption[:2200],
-                      "access_token": self.token},
+                data={
+                    "image_url": media_url,
+                    "caption": caption[:2200],
+                    "access_token": self.token,
+                },
                 timeout=self.timeout,
             )
             created.raise_for_status()
