@@ -122,7 +122,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             if parsed.scheme != "https" or not parsed.netloc:
                 raise ValueError(f"target {target_id!r}: public_base_url must use HTTPS")
         if platform.lower() == "instagram" and target.get("enabled", True):
-            if not re.fullmatch(r"\\d+", target.get("instagram_user_id", "")):
+            if not re.fullmatch(r"[0-9]+", target.get("instagram_user_id", "")):
                 raise ValueError(f"target {target_id!r}: instagram_user_id must be numeric")
         if platform.lower() == "tiktok" and target.get("enabled", True):
             if not target.get("privacy_level"):
