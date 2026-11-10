@@ -182,3 +182,32 @@ def test_instagram_reconciliation_cli_lists_and_resolves(tmp_path: Path, capsys)
             ("ambiguous-a",),
         ).fetchone()[0]
     assert status == "complete"
+
+
+def test_instagram_resolution_history_supports_later_retry_cycle(tmp_path: Path) -> None:
+    database = _database(tmp_path)
+    resolve_instagram_operation(
+        database,
+        operation_key="ambiguous-a",
+        resolution="not_published",
+        actor="operator",
+        note="Confirmed no post was created.",
+    )
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "UPDATE instagram_publish_operations SET status = 'publishing' "
+            "WHERE operation_key = ?",
+            ("ambiguous-a",),
+        )
+
+    resolve_instagram_operation(
+        database,
+        operation_key="ambiguous-a",
+        resolution="published",
+        actor="operator",
+        note="Verified the retried post is now live.",
+    )
+
+    history = instagram_resolution_history(database)
+    assert len(history) == 2
+    assert [item["resolution"] for item in history] == ["published", "not_published"]
