@@ -142,3 +142,36 @@ def test_diagnostics_skips_disabled_targets_without_network_calls(tmp_path: Path
     assert results[0]["ok"] is True
     session.get.assert_not_called()
     session.post.assert_not_called()
+
+
+def test_diagnostics_checks_facebook_page_access(tmp_path: Path, monkeypatch) -> None:
+    _workspace(
+        tmp_path,
+        {
+            "targets": [
+                {
+                    "id": "fb",
+                    "platform": "facebook",
+                    "enabled": True,
+                    "facebook_page_id": "123456",
+                }
+            ],
+            "routes": {},
+        },
+    )
+    monkeypatch.setenv("FACEBOOK_PAGE_ACCESS_TOKEN", "page-secret")
+    session = MagicMock()
+    session.get.return_value = _response({"id": "123456", "name": "AMN Page"})
+
+    results = run_diagnostics(tmp_path, session=session)
+
+    assert results == [
+        {
+            "target": "fb",
+            "check": "account",
+            "ok": True,
+            "detail": "Facebook Page token accepted",
+        }
+    ]
+    assert session.get.call_args.args[0].endswith("/v26.0/123456")
+    assert session.get.call_args.kwargs["params"]["access_token"] == "page-secret"
