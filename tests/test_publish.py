@@ -192,18 +192,19 @@ def test_delivery_journal_records_retry_and_terminal_failure(
     snapshot = delivery_event_snapshot(tmp_path / "build" / "jobs.sqlite3")
 
     events = [event for event in snapshot["recent"] if event["output"] == "outbox/one.jpg"]
-    assert [event["event_type"] for event in reversed(events)] == [
+    chronological = list(reversed(events))
+    assert [event["event_type"] for event in chronological] == [
         "attempt_started",
         "attempt_failed",
         "retry_scheduled",
         "attempt_started",
         "attempt_failed",
     ]
-    assert events[1]["retry_after_seconds"] == 3.5
-    assert events[1]["will_retry"] is True
-    assert events[2]["retry_after_seconds"] == 3.5
-    assert events[2]["will_retry"] is True
-    assert events[-1]["will_retry"] is False
+    assert chronological[1]["retry_after_seconds"] == 3.5
+    assert chronological[1]["will_retry"] is True
+    assert chronological[2]["retry_after_seconds"] == 3.5
+    assert chronological[2]["will_retry"] is True
+    assert chronological[-1]["will_retry"] is False
 
 
 def test_delivery_event_snapshot_validates_limit(tmp_path: Path) -> None:
