@@ -66,6 +66,8 @@ class XPublisher(Publisher):
                 },
             )
             media_data = uploaded.get("data", uploaded)
+            if not isinstance(media_data, dict):
+                raise RuntimeError("X media upload response was malformed")
             media_id = media_data.get("id") or media_data.get("media_id")
             if not isinstance(media_id, (str, int)) or isinstance(media_id, bool):
                 raise RuntimeError("X media upload response did not include a media ID")
