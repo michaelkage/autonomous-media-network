@@ -137,6 +137,7 @@ def delivery_event_snapshot(
             "stale_after_seconds": stale_after_seconds,
             "recent_stalled": [],
             "recent_ambiguous": [],
+            "resolution_history": [],
         },
     }
     if not Path(database).is_file():
@@ -254,10 +255,15 @@ def delivery_event_snapshot(
             "stale_after_seconds": stale_after_seconds,
             "recent_stalled": [],
             "recent_ambiguous": [],
+            "resolution_history": [],
         }
         if instagram_table:
+            columns = {row[1] for row in db.execute("PRAGMA table_info(instagram_publish_operations)")}
+            output_column = "output" if "output" in columns else "NULL"
             rows = db.execute(
-                "SELECT container_id, status, updated_at, output FROM instagram_publish_operations"
+                "SELECT operation_key, container_id, status, updated_at, "
+                + output_column
+                + " AS output FROM instagram_publish_operations"
             ).fetchall()
             stalled_rows: list[dict[str, Any]] = []
             ambiguous_rows: list[dict[str, Any]] = []
@@ -265,6 +271,7 @@ def delivery_event_snapshot(
                 status = str(row["status"])
                 age = max(0.0, now - float(row["updated_at"]))
                 item = {
+                    "operation_key": str(row["operation_key"]),
                     "container_id": str(row["container_id"]),
                     "output": str(row["output"]) if row["output"] else None,
                     "age_seconds": int(age),
@@ -286,6 +293,28 @@ def delivery_event_snapshot(
             instagram["recent_ambiguous"] = sorted(
                 ambiguous_rows, key=lambda item: item["age_seconds"], reverse=True
             )[:25]
+
+        resolution_table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'instagram_operation_resolutions'"
+        ).fetchone()
+        if resolution_table:
+            instagram["resolution_history"] = [
+                {
+                    "operation_key": str(row["operation_key"]),
+                    "container_id": str(row["container_id"]),
+                    "resolution": str(row["resolution"]),
+                    "new_status": str(row["new_status"]),
+                    "actor": str(row["actor"]),
+                    "note": str(row["note"]),
+                    "resolved_at": float(row["resolved_at"]),
+                }
+                for row in db.execute(
+                    "SELECT operation_key, container_id, resolution, new_status, "
+                    "actor, note, resolved_at FROM instagram_operation_resolutions "
+                    "ORDER BY id DESC LIMIT 25"
+                )
+            ]
 
     return {
         "counts": counts,
