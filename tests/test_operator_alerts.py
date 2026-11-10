@@ -149,3 +149,35 @@ def test_alerts_cli_uses_private_alert_chat_not_publishing_chat(
 
     assert main(["alerts", "check", "--root", str(tmp_path)]) == 0
     assert destinations == ["@private-ops"]
+
+
+
+def test_alerts_can_run_from_the_durable_schedule_worker(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    queue = JobQueue(database)
+    failed_job = queue.enqueue("publish", max_attempts=1)
+    assert queue.claim("worker-a") is not None
+    assert queue.fail(failed_job, "worker-a", "provider failure", retry_delay=0)
+    queue.add_schedule(
+        "operator-alerts",
+        "alerts",
+        {"root": str(tmp_path)},
+        300,
+        first_run_at=1000,
+    )
+    assert queue.enqueue_due_schedules(now=1000) == 1
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("TELEGRAM_ALERT_CHAT_ID", "@private-ops")
+    messages: list[str] = []
+    monkeypatch.setattr(
+        "amn.operator_alerts._send_telegram",
+        lambda token, chat, message, timeout: messages.append(message),
+    )
+
+    assert main(["jobs", "worker", "--once", "--root", str(tmp_path)]) == 0
+    assert len(messages) == 1
+    assert "AMN job permanently failed" in messages[0]
+    assert queue.counts()["succeeded"] == 1
