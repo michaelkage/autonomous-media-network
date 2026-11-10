@@ -57,6 +57,7 @@ class RedditFetcher:
             image_path.unlink(missing_ok=True)
             sidecar_path.unlink(missing_ok=True)
             temp_image = temp_sidecar = None
+            download = None
             try:
                 download = self.session.get(image_url, timeout=(5, 30), stream=True)
                 download.raise_for_status()
@@ -103,6 +104,8 @@ class RedditFetcher:
                 sidecar_path.unlink(missing_ok=True)
                 print(f"failed to fetch {image_url}: {exc}")
             finally:
+                if download is not None:
+                    download.close()
                 if temp_image:
                     temp_image.unlink(missing_ok=True)
                 if temp_sidecar:
