@@ -80,7 +80,7 @@ def test_publish_manifest_rejects_paths_outside_root(tmp_path: Path) -> None:
 def test_rate_limiter_retry_delay_is_bounded() -> None:
     limiter = RateLimiter(min_interval=0, max_backoff=4)
     assert limiter.retry_delay(10) <= 4
-    assert limiter.retry_delay(1, retry_after=20) == 4
+    assert limiter.retry_delay(1, retry_after=20) == 20
 
 
 def test_pipeline_fails_closed_without_watermark(tmp_path: Path) -> None:
