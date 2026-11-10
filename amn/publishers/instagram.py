@@ -8,7 +8,7 @@ from urllib.parse import quote, urlparse
 
 import requests
 
-from ..publish import Publisher
+from ..publish import Publisher, _retry_after_from_response
 
 __all__ = ["InstagramPublisher"]
 
@@ -41,8 +41,10 @@ class InstagramPublisher(Publisher):
         self.base = f"https://graph.facebook.com/{api_version}"
         self.timeout, self.poll_interval, self.max_polls = timeout, poll_interval, max_polls
         self.session = requests.Session()
+        self.retry_after: float | None = None
 
     def publish(self, image_path: Path, caption: str) -> bool:
+        self.retry_after = None
         if image_path.suffix.lower() not in {".jpg", ".jpeg"}:
             print("Instagram requires JPEG images")
             return False
@@ -91,5 +93,7 @@ class InstagramPublisher(Publisher):
                 raise RuntimeError("Instagram did not confirm media publication")
             return True
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
+            response = exc.response if isinstance(exc, requests.RequestException) else None
+            self.retry_after = _retry_after_from_response(response)
             print(f"Instagram publish failed: {exc}")
             return False
