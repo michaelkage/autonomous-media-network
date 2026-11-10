@@ -207,10 +207,17 @@ def check_operator_alerts(
                         "SELECT * FROM operator_alerts WHERE fingerprint = ?", (fingerprint,)
                     ).fetchone()
                 else:
+                    reopened = row["status"] == "resolved"
                     db.execute(
                         "UPDATE operator_alerts SET kind = ?, message = ?, status = 'active', "
-                        "last_seen = ? WHERE fingerprint = ?",
-                        (incident["kind"], incident["message"], current, fingerprint),
+                        "last_seen = ?, last_attempt_at = CASE WHEN ? THEN NULL ELSE last_attempt_at END, "
+                        "last_notified_at = CASE WHEN ? THEN NULL ELSE last_notified_at END, "
+                        "last_error = CASE WHEN ? THEN NULL ELSE last_error END "
+                        "WHERE fingerprint = ?",
+                        (
+                            incident["kind"], incident["message"], current,
+                            int(reopened), int(reopened), int(reopened), fingerprint,
+                        ),
                     )
 
                 if not can_notify:
