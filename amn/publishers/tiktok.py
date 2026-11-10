@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import threading
 import time
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -11,6 +13,16 @@ import requests
 from ..publish import Publisher, RateLimiter, _retry_after_from_response
 
 __all__ = ["TikTokPublisher"]
+
+_TOKEN_LIMITERS_LOCK = threading.Lock()
+_TOKEN_LIMITERS: dict[str, RateLimiter] = {}
+
+
+def _limiter_for_token(access_token: str) -> RateLimiter:
+    """Share TikTok's per-token request spacing across publisher instances."""
+    token_key = hashlib.sha256(access_token.encode("utf-8")).hexdigest()
+    with _TOKEN_LIMITERS_LOCK:
+        return _TOKEN_LIMITERS.setdefault(token_key, RateLimiter(min_interval=10.0))
 
 
 def _truncate_utf16(value: str, max_units: int) -> str:
@@ -30,6 +42,8 @@ class TikTokPublisher(Publisher):
 
     TikTok's photo API uses PULL_FROM_URL, so the configured domain/prefix must
     be verified in the TikTok developer app. Direct posting requires video.publish.
+    Request spacing is shared by access token within this process; deployments
+    with multiple worker processes must coordinate the same token's rate limit.
     """
 
     API = "https://open.tiktokapis.com/v2"
@@ -58,7 +72,7 @@ class TikTokPublisher(Publisher):
         self.privacy_level = privacy_level
         self.timeout, self.poll_interval, self.max_polls = timeout, poll_interval, max_polls
         self.session = requests.Session()
-        self.rate_limiter = RateLimiter(min_interval=10.0)
+        self.rate_limiter = _limiter_for_token(access_token)
         self.retry_after: float | None = None
         self.headers = {
             "Authorization": f"Bearer {self.token}",
