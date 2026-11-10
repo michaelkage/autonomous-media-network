@@ -98,6 +98,12 @@ def resolve_instagram_operation(
 
     new_status = "complete" if resolution == "published" else "failed"
     with closing(_connect(database)) as db:
+        table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'instagram_publish_operations'"
+        ).fetchone()
+        if table is None:
+            raise ValueError("Instagram operation not found")
         _ensure_audit_table(db)
         db.execute("BEGIN IMMEDIATE")
         try:
