@@ -49,8 +49,8 @@ def test_reddit_submits_link_post_and_retains_submission_id(tmp_path: Path) -> N
         "url": "https://cdn.example.com/amn/outbox/asset%20photo.jpg",
         "sendreplies": "true",
     }
-    assert call.kwargs["headers"]["Authorization"] == "Bearer reddit-user-token"
-    assert call.kwargs["headers"]["User-Agent"] == "linux:amn:v0.2.0 (by /u/amn_test)"
+    assert publisher.session.headers["Authorization"] == "Bearer reddit-user-token"
+    assert publisher.session.headers["User-Agent"] == "linux:amn:v0.2.0 (by /u/amn_test)"
 
 
 def test_reddit_truncates_title_to_provider_limit(tmp_path: Path) -> None:
