@@ -34,7 +34,7 @@ def test_s3_storage_uploads_to_public_url_prefix_and_caches(tmp_path: Path) -> N
         "outbox/asset one.jpg",
         ExtraArgs={
             "ContentType": "image/jpeg",
-            "CacheControl": "public, max-age=31536000, immutable",
+            "CacheControl": "public, max-age=300",
         },
     )
     assert storage.upload(image, "https://cdn.example.com/outbox") == key
@@ -91,7 +91,6 @@ def test_s3_config_validation_rejects_unknown_fields() -> None:
                 "routes": {},
             }
         )
-
 
 
 def test_routed_instagram_publishing_uploads_to_configured_storage(
