@@ -155,6 +155,7 @@ def test_pipeline_jobs_are_serialized_across_workers(tmp_path: Path) -> None:
 
 
 
+
 def test_schedule_enqueues_due_job_and_skips_missed_intervals(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
     queue.add_schedule(
@@ -193,12 +194,24 @@ def test_schedule_can_be_disabled_and_duplicate_ids_are_rejected(tmp_path: Path)
 
 def test_schedule_cli_add_list_tick_and_disable(tmp_path: Path, capsys) -> None:
     root = str(tmp_path)
-    assert main(
-        [
-            "jobs", "schedule", "add", "--id", "daily-pipeline",
-            "--kind", "pipeline", "--every-seconds", "86400", "--root", root,
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "jobs",
+                "schedule",
+                "add",
+                "--id",
+                "daily-pipeline",
+                "--kind",
+                "pipeline",
+                "--every-seconds",
+                "86400",
+                "--root",
+                root,
+            ]
+        )
+        == 0
+    )
     assert main(["jobs", "schedule", "list", "--root", root]) == 0
     assert "daily-pipeline enabled pipeline" in capsys.readouterr().out
 
@@ -208,6 +221,4 @@ def test_schedule_cli_add_list_tick_and_disable(tmp_path: Path, capsys) -> None:
 
     assert main(["jobs", "schedule", "tick", "--root", root]) == 0
     assert queue.counts()["pending"] == 1
-    assert main(
-        ["jobs", "schedule", "disable", "--id", "daily-pipeline", "--root", root]
-    ) == 0
+    assert main(["jobs", "schedule", "disable", "--id", "daily-pipeline", "--root", root]) == 0
