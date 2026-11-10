@@ -158,6 +158,15 @@ def create_app(root: Path = ROOT) -> Any:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/alerts")
+    def operator_alerts(limit: int = 50) -> dict[str, Any]:
+        from .operator_alerts import operator_alert_snapshot
+
+        try:
+            return operator_alert_snapshot(root / "build" / "jobs.sqlite3", limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/config")
     def get_config() -> dict[str, Any]:
         return _redact_secrets(load_config(config_path))
