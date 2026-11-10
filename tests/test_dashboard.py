@@ -105,3 +105,24 @@ def test_dashboard_exposes_durable_job_counts_and_recent_jobs(tmp_path: Path) ->
     assert jobs["recent"][0]["id"] == job_id
     assert jobs["recent"][0]["kind"] == "fetch"
     assert "payload" not in jobs["recent"][0]
+
+
+
+def test_dashboard_exposes_schedule_metadata_without_payload(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path / "build" / "jobs.sqlite3")
+    queue.add_schedule(
+        "hourly-fetch",
+        "fetch",
+        {"query": "earthporn", "private_note": "must not leak"},
+        3600,
+        first_run_at=1000,
+    )
+
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+    schedules = client.get("/api/status").json()["schedules"]
+
+    assert schedules["counts"] == {"enabled": 1, "disabled": 0}
+    assert schedules["recent"][0]["id"] == "hourly-fetch"
+    assert schedules["recent"][0]["kind"] == "fetch"
+    assert "payload" not in schedules["recent"][0]
+    assert "private_note" not in json.dumps(schedules)
