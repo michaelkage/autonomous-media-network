@@ -325,15 +325,10 @@ def main(argv: list[str] | None = None) -> int:
             payload = job["payload"]
             job_root = Path(payload.get("root", args.root)).resolve()
             if job["kind"] == "pipeline":
-                result = run(
-                    job_root, watermark_text=os.environ.get(WATERMARK_ENV, "")
-                )
+                result = run(job_root, watermark_text=os.environ.get(WATERMARK_ENV, ""))
                 if result.errors:
                     raise RuntimeError("; ".join(result.errors))
-                print(
-                    f"pipeline job: {len(result.passed)} passed, "
-                    f"{len(result.rejected)} rejected"
-                )
+                print(f"pipeline job: {len(result.passed)} passed, {len(result.rejected)} rejected")
             elif job["kind"] == "fetch":
                 from .fetchers.reddit import RedditFetcher
 
@@ -369,9 +364,7 @@ def main(argv: list[str] | None = None) -> int:
             def keep_lease_alive() -> None:
                 interval = max(1.0, args.lease_seconds / 3)
                 while not stop_heartbeat.wait(interval):
-                    if not queue.heartbeat(
-                        job["id"], worker_id, lease_seconds=args.lease_seconds
-                    ):
+                    if not queue.heartbeat(job["id"], worker_id, lease_seconds=args.lease_seconds):
                         return
 
             heartbeat = threading.Thread(target=keep_lease_alive, daemon=True)
