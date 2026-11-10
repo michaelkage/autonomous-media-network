@@ -51,9 +51,7 @@ def test_x_redacts_token_and_preserves_retry_after(
     image.write_bytes(b"image")
     publisher = XPublisher("sensitive-user-token")
     response = _response({"detail": "bad sensitive-user-token"}, 429, {"Retry-After": "9"})
-    response.raise_for_status.side_effect = requests.HTTPError(
-        "rate limited", response=response
-    )
+    response.raise_for_status.side_effect = requests.HTTPError("rate limited", response=response)
     publisher.session.post = MagicMock(return_value=response)
 
     assert publisher.publish(image, "caption") is False
