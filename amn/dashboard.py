@@ -114,9 +114,33 @@ def create_app(root: Path = ROOT) -> Any:
                     for job in queue.list(limit=20)
                 ],
             }
+            schedules = queue.list_schedules()
+            result["schedules"] = {
+                "counts": {
+                    "enabled": sum(schedule["enabled"] for schedule in schedules),
+                    "disabled": sum(not schedule["enabled"] for schedule in schedules),
+                },
+                "recent": [
+                    {
+                        "id": schedule["id"],
+                        "kind": schedule["kind"],
+                        "enabled": schedule["enabled"],
+                        "interval_seconds": schedule["interval_seconds"],
+                        "next_run_at": schedule["next_run_at"],
+                        "last_enqueued_job_id": schedule["last_enqueued_job_id"],
+                        "created_at": schedule["created_at"],
+                        "updated_at": schedule["updated_at"],
+                    }
+                    for schedule in schedules[:20]
+                ],
+            }
         else:
             result["jobs"] = {
                 "counts": {"pending": 0, "running": 0, "succeeded": 0, "failed": 0},
+                "recent": [],
+            }
+            result["schedules"] = {
+                "counts": {"enabled": 0, "disabled": 0},
                 "recent": [],
             }
         return result
