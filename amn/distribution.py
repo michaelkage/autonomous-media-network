@@ -115,10 +115,18 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         if platform.lower() in {"instagram", "tiktok"}:
             from urllib.parse import urlparse
 
-            media_url = target.get("public_base_url", "")
+            media_url = target.get("public_base_url")
+            if not isinstance(media_url, str):
+                raise ValueError(f"target {target_id!r}: public_base_url must use HTTPS")
             parsed = urlparse(media_url)
             if parsed.scheme != "https" or not parsed.netloc:
                 raise ValueError(f"target {target_id!r}: public_base_url must use HTTPS")
+        if platform.lower() == "instagram" and target.get("enabled", True):
+            if not re.fullmatch(r"\\d+", target.get("instagram_user_id", "")):
+                raise ValueError(f"target {target_id!r}: instagram_user_id must be numeric")
+        if platform.lower() == "tiktok" and target.get("enabled", True):
+            if not target.get("privacy_level"):
+                raise ValueError(f"target {target_id!r}: privacy_level is required")
         if platform.lower() == "tiktok" and target.get("enabled", True):
             if not target.get("direct_post_enabled", False):
                 raise ValueError(
