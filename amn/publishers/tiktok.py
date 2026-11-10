@@ -27,7 +27,6 @@ def _limiter_for_token(access_token: str) -> RateLimiter:
         return _TOKEN_LIMITERS.setdefault(token_key, RateLimiter(min_interval=10.0))
 
 
-
 class SQLiteTokenRateLimiter:
     """Reserve request slots transactionally across local worker processes."""
 
