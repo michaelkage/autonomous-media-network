@@ -122,8 +122,6 @@ def process_image(
 
         source_digest = _sha256(source)
         output = outbox / f"{source.stem[:80]}.jpg"
-        if output.exists():
-            output = outbox / f"{source.stem[:80]}-{source_digest[:12]}.jpg"
         rendered: bytes | None = None
         if not dry_run:
             outbox.mkdir(parents=True, exist_ok=True)
@@ -133,6 +131,8 @@ def process_image(
             buffer = io.BytesIO()
             watermarked.convert("RGB").save(buffer, "JPEG", quality=JPEG_QUALITY, optimize=True)
             rendered = buffer.getvalue()
+            if output.exists() and output.read_bytes() != rendered:
+                output = outbox / f"{source.stem[:80]}-{source_digest[:12]}.jpg"
             if output.exists():
                 if output.read_bytes() != rendered:
                     raise FileExistsError(f"refusing to overwrite existing output: {output}")
