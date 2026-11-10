@@ -253,9 +253,7 @@ def run(
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         result.errors.append(f"pipeline checkpoint is invalid or unreadable: {exc}")
         return result
-    completed = {
-        (entry["source_name"], entry["source_sha256"]): entry for entry in checkpoint
-    }
+    completed = {(entry["source_name"], entry["source_sha256"]): entry for entry in checkpoint}
     for entry in checkpoint:
         _restore_checkpoint_entry(result, entry)
     runtime_config = root / "config" / "amn.json"
