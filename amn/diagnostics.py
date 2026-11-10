@@ -138,9 +138,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                 payload = response.json()
                 if payload.get("error") or str(payload.get("id")) != str(page_id):
                     raise ValueError("Facebook Page lookup failed")
-                results.append(
-                    _check(target_id, "account", True, "Facebook Page token accepted")
-                )
+                results.append(_check(target_id, "account", True, "Facebook Page token accepted"))
             except (requests.RequestException, ValueError, TypeError, AttributeError):
                 results.append(
                     _check(
