@@ -76,6 +76,8 @@ def save_config(path: Path, data: dict[str, Any]) -> None:
 def targets_for(item: dict[str, Any], config: dict[str, Any]) -> list[dict[str, Any]]:
     """Resolve explicit categories/tags to configured targets; no implicit broadcast."""
     categories = set(item.get("categories", [])) | set(item.get("tags", []))
+    if item.get("subreddit"):
+        categories.add(item["subreddit"])
     routes = config.get("routes", {})
     target_ids: set[str] = set(routes.get("default", []))
     for category in categories:
