@@ -37,7 +37,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
         target
         for target in config.get("targets", [])
         if target.get("enabled", True)
-        and target.get("platform", "").lower() in {"instagram", "tiktok"}
+        and target.get("platform", "").lower() in {"instagram", "tiktok", "reddit"}
     ]
     if storage_config and social_targets:
         try:
@@ -263,6 +263,63 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                     )
                 )
 
+        elif platform == "reddit":
+            token = os.environ.get(target.get("token_env", "REDDIT_USER_ACCESS_TOKEN"))
+            user_agent = os.environ.get(target.get("user_agent_env", "AMN_REDDIT_USER_AGENT"))
+            subreddit = target.get("subreddit")
+            if not token or not user_agent:
+                results.append(
+                    _check(
+                        target_id,
+                        "credentials",
+                        False,
+                        "Reddit OAuth token or descriptive User-Agent missing",
+                    )
+                )
+                continue
+            try:
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": user_agent,
+                }
+                account = client.get(
+                    "https://oauth.reddit.com/api/v1/me",
+                    headers=headers,
+                    timeout=15,
+                )
+                account.raise_for_status()
+                identity = account.json()
+                if not isinstance(identity, dict) or not identity.get("name"):
+                    raise ValueError("Reddit identity lookup failed")
+                community = client.get(
+                    f"https://oauth.reddit.com/r/{quote(str(subreddit), safe='')}/about",
+                    headers=headers,
+                    timeout=15,
+                )
+                community.raise_for_status()
+                community_data = community.json().get("data", {})
+                if str(community_data.get("display_name", "")).lower() != str(
+                    subreddit
+                ).lower():
+                    raise ValueError("Reddit subreddit lookup failed")
+                results.append(
+                    _check(
+                        target_id,
+                        "account",
+                        True,
+                        "Reddit OAuth identity and subreddit are accessible",
+                    )
+                )
+            except (requests.RequestException, ValueError, TypeError, AttributeError):
+                results.append(
+                    _check(
+                        target_id,
+                        "account",
+                        False,
+                        "Reddit OAuth token, scope, or subreddit access rejected",
+                    )
+                )
+
         elif platform == "bluesky":
             handle = os.environ.get(target.get("handle_env", "BLUESKY_HANDLE"))
             password = os.environ.get(target.get("password_env", "BLUESKY_APP_PASSWORD"))
@@ -292,7 +349,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                     )
                 )
 
-        if platform in {"instagram", "tiktok"}:
+        if platform in {"instagram", "tiktok", "reddit"}:
             media_url = target.get("public_base_url", "").rstrip("/")
             sample = next(
                 (
