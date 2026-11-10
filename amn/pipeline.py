@@ -12,6 +12,9 @@ import tempfile
 import threading
 import time
 import uuid
+import threading
+import time
+import uuid
 import tomllib
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -284,12 +287,137 @@ def main(argv: list[str] | None = None) -> int:
     job_list.add_argument("--limit", type=int, default=50)
     job_list.add_argument("--root", type=Path, default=Path.cwd())
 
+    jobs = sub.add_parser("jobs", help="enqueue, inspect, and run durable jobs")
+    job_commands = jobs.add_subparsers(dest="jobs_command", required=True)
+    enqueue = job_commands.add_parser("enqueue", help="enqueue a pipeline, fetch, or routed publish job")
+    enqueue.add_argument("--kind", choices=["pipeline", "fetch", "publish"], required=True)
+    enqueue.add_argument("--query", help="one subreddit for fetch jobs")
+    enqueue.add_argument("--limit", type=int, default=10)
+    enqueue.add_argument("--dedupe-key")
+    enqueue.add_argument("--root", type=Path, default=Path.cwd())
+    worker = job_commands.add_parser("worker", help="run queued jobs")
+    worker.add_argument("--once", action="store_true", help="process at most one job then exit")
+    worker.add_argument("--poll-interval", type=float, default=2.0)
+    worker.add_argument("--lease-seconds", type=float, default=3600.0)
+    worker.add_argument("--root", type=Path, default=Path.cwd())
+    job_list = job_commands.add_parser("list", help="show recent durable jobs")
+    job_list.add_argument("--status", choices=["pending", "running", "succeeded", "failed"])
+    job_list.add_argument("--limit", type=int, default=50)
+    job_list.add_argument("--root", type=Path, default=Path.cwd())
+
     fetch = sub.add_parser("fetch")
     fetch.add_argument("--source", required=True, choices=["reddit"])
     fetch.add_argument("--query", help="one subreddit; omit to fetch configured Reddit sources")
     fetch.add_argument("--limit", type=int, default=10)
     fetch.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
+
+    if args.command == "jobs":
+        from .jobs import JobQueue
+
+        queue = JobQueue(args.root / BUILD_DIR / "jobs.sqlite3")
+        if args.jobs_command == "enqueue":
+            if args.limit < 1 or args.limit > 100:
+                parser.error("--limit for jobs enqueue must be between 1 and 100")
+            if args.kind != "fetch" and args.query:
+                parser.error("--query is only valid for fetch jobs")
+            payload: dict[str, Any] = {"root": str(args.root.resolve())}
+            if args.kind == "fetch":
+                payload.update({"query": args.query, "limit": args.limit})
+            job_id = queue.enqueue(args.kind, payload, dedupe_key=args.dedupe_key)
+            print(f"enqueued {args.kind} job {job_id}")
+            return 0
+        if args.jobs_command == "list":
+            for job in queue.list(status=args.status, limit=args.limit):
+                print(
+                    f"{job['id']} {job['status']} {job['kind']} "
+                    f"attempt={job['attempts']}/{job['max_attempts']} "
+                    f"error={job['last_error'] or '-'}"
+                )
+            print(f"job counts: {queue.counts()}")
+            return 0
+        if args.poll_interval <= 0 or args.lease_seconds < 3:
+            parser.error("--poll-interval must be positive and --lease-seconds at least 3")
+        worker_id = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+
+        def execute_job(job: dict[str, Any]) -> None:
+            payload = job["payload"]
+            job_root = Path(payload.get("root", args.root)).resolve()
+            if job["kind"] == "pipeline":
+                result = run(
+                    job_root, watermark_text=os.environ.get(WATERMARK_ENV, "")
+                )
+                if result.errors:
+                    raise RuntimeError("; ".join(result.errors))
+                print(
+                    f"pipeline job: {len(result.passed)} passed, "
+                    f"{len(result.rejected)} rejected"
+                )
+            elif job["kind"] == "fetch":
+                from .fetchers.reddit import RedditFetcher
+
+                query = payload.get("query")
+                if query:
+                    sources = [query]
+                else:
+                    from .distribution import load_config, validate_config
+
+                    config = validate_config(load_config(job_root / "config" / "amn.json"))
+                    sources = config.get("sources", {}).get("reddit", [])
+                if not sources:
+                    raise RuntimeError("no Reddit sources configured for fetch job")
+                fetcher = RedditFetcher(os.environ.get("REDDIT_USER_AGENT", "amn-fetcher-v1"))
+                total = sum(
+                    fetcher.fetch(source, int(payload.get("limit", 10)), job_root / INBOX_DIR)
+                    for source in sources
+                )
+                print(f"fetch job: downloaded {total} assets from {len(sources)} subreddit(s)")
+            elif job["kind"] == "publish":
+                from .distribution import publish_routed_manifest
+
+                print(f"publish job: {publish_routed_manifest(job_root)}")
+            else:
+                raise ValueError(f"unsupported job kind: {job['kind']}")
+
+        def process_one() -> bool:
+            job = queue.claim(worker_id, lease_seconds=args.lease_seconds)
+            if job is None:
+                return False
+            stop_heartbeat = threading.Event()
+
+            def keep_lease_alive() -> None:
+                interval = max(1.0, args.lease_seconds / 3)
+                while not stop_heartbeat.wait(interval):
+                    if not queue.heartbeat(
+                        job["id"], worker_id, lease_seconds=args.lease_seconds
+                    ):
+                        return
+
+            heartbeat = threading.Thread(target=keep_lease_alive, daemon=True)
+            heartbeat.start()
+            try:
+                execute_job(job)
+                if not queue.complete(job["id"], worker_id):
+                    print(f"job {job['id']} lost its lease before completion", file=sys.stderr)
+            except Exception as exc:
+                queue.fail(job["id"], worker_id, str(exc))
+                print(f"job {job['id']} failed: {exc}", file=sys.stderr)
+            finally:
+                stop_heartbeat.set()
+                heartbeat.join(timeout=2)
+            return True
+
+        if args.once:
+            process_one()
+            return 0
+        print(f"AMN worker {worker_id} polling {queue.database}")
+        try:
+            while True:
+                if not process_one():
+                    time.sleep(args.poll_interval)
+        except KeyboardInterrupt:
+            print("worker stopped")
+            return 0
 
     if args.command == "jobs":
         from .jobs import JobQueue
