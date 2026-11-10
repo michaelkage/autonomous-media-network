@@ -152,7 +152,9 @@ def process_image(
             values = sidecar_data.get(key, [])
             if isinstance(values, list):
                 record[key] = [str(value) for value in values if isinstance(value, str)]
-        for key in ("source", "subreddit", "source_id", "permalink"):
+        if isinstance(sidecar_data.get("source"), str):
+            record["source_platform"] = sidecar_data["source"]
+        for key in ("subreddit", "source_id", "permalink"):
             if isinstance(sidecar_data.get(key), str):
                 record[key] = sidecar_data[key]
     except (OSError, json.JSONDecodeError, AttributeError):
