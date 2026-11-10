@@ -109,11 +109,14 @@ def resolve_instagram_operation(
         _ensure_audit_table(db)
         db.execute("BEGIN IMMEDIATE")
         try:
+            columns = {
+                row[1] for row in db.execute("PRAGMA table_info(instagram_publish_operations)")
+            }
+            output_column = "output" if "output" in columns else "NULL"
             operation = db.execute(
                 "SELECT container_id, status, "
-                + ("output" if "output" in {row[1] for row in db.execute("PRAGMA table_info(instagram_publish_operations)")} else "NULL")
-                + " AS output FROM instagram_publish_operations "
-                "WHERE operation_key = ?",
+                + output_column
+                + " AS output FROM instagram_publish_operations WHERE operation_key = ?",
                 (operation_key.strip(),),
             ).fetchone()
             if operation is None:
@@ -171,7 +174,9 @@ def resolve_instagram_operation(
                 """,
                 (
                     delivery_id_for("instagram", operation_key.strip()),
-                    str(operation["output"]) if operation["output"] else "container:" + str(operation["container_id"]),
+                    str(operation["output"])
+                    if operation["output"]
+                    else "container:" + str(operation["container_id"]),
                     "manual_reconciliation_published"
                     if resolution == "published"
                     else "manual_reconciliation_not_published",
