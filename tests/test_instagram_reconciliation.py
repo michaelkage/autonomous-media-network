@@ -79,7 +79,8 @@ def test_instagram_resolution_published_is_atomic_and_audited(tmp_path: Path) ->
     snapshot = delivery_event_snapshot(database)
     assert snapshot["instagram_operations"]["complete"] == 2
     assert snapshot["instagram_operations"]["reconciliation_required"] == 1
-    assert snapshot["instagram_operations"]["resolution_history"][0]["operation_key"] == "ambiguous-a"
+    audit = snapshot["instagram_operations"]["resolution_history"]
+    assert audit[0]["operation_key"] == "ambiguous-a"
 
 
 def test_instagram_not_published_resolution_marks_retryable_and_audits(tmp_path: Path) -> None:
