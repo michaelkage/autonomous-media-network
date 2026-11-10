@@ -1,0 +1,23 @@
+{
+  "sources": {
+    "reddit": ["earthporn", "wallpapers"]
+  },
+  "targets": [
+    {
+      "id": "telegram-main",
+      "platform": "telegram",
+      "enabled": false,
+      "chat_id": "@your_channel",
+      "token_env": "TELEGRAM_BOT_TOKEN"
+    }
+  ],
+  "routes": {
+    "default": [],
+    "landscape": ["telegram-main"],
+    "architecture": ["telegram-main"]
+  },
+  "thresholds": {
+    "min_likes": 500,
+    "max_distance": 5
+  }
+}
