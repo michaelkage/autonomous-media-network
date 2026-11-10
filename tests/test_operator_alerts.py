@@ -151,7 +151,6 @@ def test_alerts_cli_uses_private_alert_chat_not_publishing_chat(
     assert destinations == ["@private-ops"]
 
 
-
 def test_alerts_can_run_from_the_durable_schedule_worker(tmp_path: Path, monkeypatch) -> None:
     database = tmp_path / "build" / "jobs.sqlite3"
     queue = JobQueue(database)
