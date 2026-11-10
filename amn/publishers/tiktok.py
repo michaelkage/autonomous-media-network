@@ -187,7 +187,8 @@ class TikTokPublisher(Publisher):
                     "ON CONFLICT(operation_key) DO UPDATE SET "
                     "publish_id = excluded.publish_id, status = excluded.status, "
                     "updated_at = excluded.updated_at, "
-                    "delivery_id = COALESCE(excluded.delivery_id, tiktok_publish_operations.delivery_id), "
+                    "delivery_id = COALESCE(excluded.delivery_id, "
+                    "tiktok_publish_operations.delivery_id), "
                     "output = COALESCE(excluded.output, tiktok_publish_operations.output)",
                     (
                         operation_key,
