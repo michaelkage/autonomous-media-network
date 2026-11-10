@@ -34,7 +34,10 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     manifest_path = root / "build" / "manifest.json"
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
+        manifest_text = (
+            manifest_path.read_text(encoding="utf-8") if manifest_path.is_file() else "{}"
+        )
+        manifest = json.loads(manifest_text)
         passed = manifest.get("passed", [])
     except (OSError, ValueError, AttributeError):
         passed = []
@@ -166,7 +169,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                     detail = f"privacy level unavailable; account options: {options}"
                     results.append(_check(target_id, "account", False, detail))
                 else:
-                    detail = f"creator access accepted; configured privacy level {privacy} is available"
+                    detail = f"privacy level {privacy} is available"
                     results.append(_check(target_id, "account", True, detail))
             except (
                 requests.RequestException,
