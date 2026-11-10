@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -28,10 +30,19 @@ def _publish_lock(key: str) -> threading.Lock:
 def _retry_after_from_response(response: Any) -> float | None:
     if response is None:
         return None
-    try:
-        return max(0.0, float(response.headers.get("Retry-After", "")))
-    except (TypeError, ValueError):
+    value = response.headers.get("Retry-After")
+    if not value:
         return None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=UTC)
+            return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            return None
 
 
 class RateLimiter:
@@ -52,7 +63,7 @@ class RateLimiter:
 
     def retry_delay(self, attempt: int, retry_after: float | None = None) -> float:
         if retry_after is not None:
-            return min(self.max_backoff, max(0.0, retry_after))
+            return max(0.0, retry_after)
         return min(self.max_backoff, 2**attempt + random.random())
 
 
