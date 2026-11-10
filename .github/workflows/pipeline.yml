@@ -61,6 +61,21 @@ jobs:
           python -m amn.pipeline publish --platform bluesky --root .
           echo "publish_exit=$?" >> "$GITHUB_OUTPUT"
 
+      # Telegram publishing is independently opt-in. The bot credentials are
+      # mapped explicitly from repository secrets; merely creating a secret does
+      # not expose it to this workflow.
+      - name: Publish to Telegram
+        if: steps.vet.outputs.exit_code == '0' && vars.AMN_TELEGRAM_PUBLISH == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "::error::AMN_TELEGRAM_PUBLISH is on but TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID are unset"
+            exit 1
+          fi
+          python -m amn.pipeline publish --platform telegram --root .
+
       - name: Commit results
         run: |
           git config user.name "amn-bot"
