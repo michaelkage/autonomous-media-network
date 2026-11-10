@@ -22,10 +22,12 @@ class TelegramPublisher(Publisher):
         self.chat_id, self.timeout = chat_id, timeout
         self.endpoint = f"https://api.telegram.org/bot{bot_token}"
         self.retry_after: float | None = None
+        self.last_message_id: int | None = None
         self.session = requests.Session()
 
     def _send_file(self, method: str, field: str, path: Path, caption: str) -> bool:
         self.retry_after = None
+        self.last_message_id = None
         try:
             path = Path(path)
             size_limit = _MAX_PHOTO_BYTES if method == "sendPhoto" else _MAX_DOCUMENT_BYTES
@@ -48,6 +50,11 @@ class TelegramPublisher(Publisher):
             payload = response.json()
             if not payload.get("ok"):
                 raise RuntimeError(payload.get("description", "Telegram rejected the post"))
+            result = payload.get("result")
+            message_id = result.get("message_id") if isinstance(result, dict) else None
+            if isinstance(message_id, bool) or not isinstance(message_id, int):
+                raise RuntimeError("Telegram accepted the request but returned no valid message_id")
+            self.last_message_id = message_id
             return True
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
             print(f"Telegram {method} failed: {exc}")
