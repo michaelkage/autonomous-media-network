@@ -167,22 +167,25 @@ def test_instagram_reconciliation_cli_lists_and_resolves(tmp_path: Path, capsys)
     assert "ambiguous-a" in listed
     assert "container=container-a" in listed
 
-    assert main(
-        [
-            "instagram-reconcile",
-            "resolve",
-            "--root",
-            str(tmp_path),
-            "--operation-key",
-            "ambiguous-a",
-            "--resolution",
-            "published",
-            "--actor",
-            "cli-operator",
-            "--note",
-            "Verified the live post.",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "instagram-reconcile",
+                "resolve",
+                "--root",
+                str(tmp_path),
+                "--operation-key",
+                "ambiguous-a",
+                "--resolution",
+                "published",
+                "--actor",
+                "cli-operator",
+                "--note",
+                "Verified the live post.",
+            ]
+        )
+        == 0
+    )
     resolved = capsys.readouterr().out
     assert "resolution=published" in resolved
     assert "status=complete" in resolved
