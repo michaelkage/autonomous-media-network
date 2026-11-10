@@ -12,7 +12,6 @@ import pytest
 from amn.publish import BlueskyPublisher, MockPublisher, Publisher, publish_manifest
 
 
-
 def _publish_from_process(manifest_path: str, root: str, marker_path: str, start_event) -> None:
     from amn.publish import Publisher, publish_manifest
 
