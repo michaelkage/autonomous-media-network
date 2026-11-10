@@ -220,3 +220,25 @@ def test_schedule_cli_add_list_tick_and_disable(tmp_path: Path, capsys) -> None:
     assert main(["jobs", "schedule", "tick", "--root", root]) == 0
     assert queue.counts()["pending"] == 1
     assert main(["jobs", "schedule", "disable", "--id", "daily-pipeline", "--root", root]) == 0
+
+
+
+def test_concurrent_schedule_ticks_enqueue_once(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+    queue.add_schedule("every-minute", "pipeline", {}, 60, first_run_at=100)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(
+            pool.map(lambda _: queue.enqueue_due_schedules(now=100), range(8))
+        )
+
+    assert sum(results) == 1
+    assert queue.counts()["pending"] == 1
+
+
+@pytest.mark.parametrize("interval", [0, -1, float("nan"), float("inf"), True])
+def test_schedule_rejects_invalid_intervals(tmp_path: Path, interval: float) -> None:
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+
+    with pytest.raises(ValueError, match="interval"):
+        queue.add_schedule("invalid", "pipeline", {}, interval)
