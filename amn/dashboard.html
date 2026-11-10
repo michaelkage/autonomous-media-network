@@ -17,6 +17,7 @@ textarea{width:100%;font:13px monospace;background:#0b1017;color:#e8edf4}
 <body>
 <h1>Autonomous Media Network</h1>
 <section><h2>Workspace</h2><pre id="status">Loading…</pre></section>
+<section><h2>Delivery timeline</h2><pre id="deliveries">Loading…</pre></section>
 <section>
 <h2>Curation controls</h2>
 <label>Minimum likes: <b id="likesValue">500</b>
@@ -37,6 +38,9 @@ async function load() {
   const statusResponse = await fetch("/api/status");
   document.querySelector("#status").textContent =
     JSON.stringify(await statusResponse.json(), null, 2);
+  const deliveryResponse = await fetch("/api/deliveries?limit=50");
+  document.querySelector("#deliveries").textContent =
+    JSON.stringify(await deliveryResponse.json(), null, 2);
   config = await (await fetch("/api/config")).json();
   configEditor.value = JSON.stringify(config, null, 2);
   likes.value = config.thresholds.min_likes ?? 500;
