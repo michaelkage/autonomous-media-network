@@ -378,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
     enqueue = job_commands.add_parser(
         "enqueue", help="enqueue a pipeline, fetch, or routed publish job"
     )
-    enqueue.add_argument("--kind", choices=["pipeline", "fetch", "publish"], required=True)
+    enqueue.add_argument("--kind", choices=["pipeline", "fetch", "publish", "alerts"], required=True)
     enqueue.add_argument("--query", help="one subreddit for fetch jobs")
     enqueue.add_argument("--limit", type=int, default=10)
     enqueue.add_argument("--dedupe-key")
@@ -397,7 +397,9 @@ def main(argv: list[str] | None = None) -> int:
     schedule_commands = schedule.add_subparsers(dest="schedule_command", required=True)
     schedule_add = schedule_commands.add_parser("add", help="create a recurring job schedule")
     schedule_add.add_argument("--id", required=True)
-    schedule_add.add_argument("--kind", choices=["pipeline", "fetch", "publish"], required=True)
+    schedule_add.add_argument(
+        "--kind", choices=["pipeline", "fetch", "publish", "alerts"], required=True
+    )
     schedule_add.add_argument("--every-seconds", type=float, required=True)
     schedule_add.add_argument("--query", help="one subreddit for fetch schedules")
     schedule_add.add_argument("--limit", type=int, default=10)
@@ -597,6 +599,15 @@ def main(argv: list[str] | None = None) -> int:
                 from .distribution import publish_routed_manifest
 
                 print(f"publish job: {publish_routed_manifest(job_root)}")
+            elif job["kind"] == "alerts":
+                from .operator_alerts import check_operator_alerts
+
+                result = check_operator_alerts(
+                    job_root / BUILD_DIR / "jobs.sqlite3",
+                    bot_token=os.environ.get("TELEGRAM_BOT_TOKEN"),
+                    chat_id=os.environ.get("TELEGRAM_ALERT_CHAT_ID"),
+                )
+                print(f"operator alert job: {result}")
             else:
                 raise ValueError(f"unsupported job kind: {job['kind']}")
 
