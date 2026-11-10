@@ -114,6 +114,37 @@ def test_concurrent_workers_cannot_claim_same_job(tmp_path: Path) -> None:
     assert len(successful) == 1
 
 
+@pytest.mark.parametrize("delay", [float("nan"), float("inf"), float("-inf"), True])
+def test_enqueue_rejects_non_finite_or_boolean_delays(tmp_path: Path, delay: float) -> None:
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+
+    with pytest.raises(ValueError, match="delay"):
+        queue.enqueue("pipeline", delay=delay)
+
+
+@pytest.mark.parametrize("lease", [float("nan"), float("inf"), float("-inf"), 0, True])
+def test_claim_and_heartbeat_reject_invalid_leases(tmp_path: Path, lease: float) -> None:
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+    job_id = queue.enqueue("pipeline")
+
+    with pytest.raises(ValueError, match="lease_seconds"):
+        queue.claim("worker-a", lease_seconds=lease)
+
+    assert queue.claim("worker-a") is not None
+    with pytest.raises(ValueError, match="lease_seconds"):
+        queue.heartbeat(job_id, "worker-a", lease_seconds=lease)
+
+
+@pytest.mark.parametrize("delay", [float("nan"), float("inf"), float("-inf"), -1, True])
+def test_fail_rejects_invalid_retry_delays(tmp_path: Path, delay: float) -> None:
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+    job_id = queue.enqueue("pipeline")
+    assert queue.claim("worker-a") is not None
+
+    with pytest.raises(ValueError, match="retry_delay"):
+        queue.fail(job_id, "worker-a", "retry", retry_delay=delay)
+
+
 def test_queue_validates_inputs_and_list_filters(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
     with pytest.raises(ValueError):
