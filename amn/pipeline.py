@@ -353,6 +353,28 @@ def main(argv: list[str] | None = None) -> int:
         "doctor", help="run read-only publishing and media-host preflight checks"
     )
     doctor.add_argument("--root", type=Path, default=Path.cwd())
+    instagram_reconcile = sub.add_parser(
+        "instagram-reconcile",
+        help="inspect and manually resolve ambiguous Instagram publications",
+    )
+    instagram_commands = instagram_reconcile.add_subparsers(
+        dest="instagram_command", required=True
+    )
+    instagram_list = instagram_commands.add_parser(
+        "list", help="list Instagram operations awaiting manual reconciliation"
+    )
+    instagram_list.add_argument("--limit", type=int, default=100)
+    instagram_list.add_argument("--root", type=Path, default=Path.cwd())
+    instagram_resolve = instagram_commands.add_parser(
+        "resolve", help="record a verified Instagram publication outcome"
+    )
+    instagram_resolve.add_argument("--operation-key", required=True)
+    instagram_resolve.add_argument(
+        "--resolution", required=True, choices=["published", "not_published"]
+    )
+    instagram_resolve.add_argument("--actor", default=os.environ.get("USER", "local-operator"))
+    instagram_resolve.add_argument("--note", required=True)
+    instagram_resolve.add_argument("--root", type=Path, default=Path.cwd())
     jobs = sub.add_parser("jobs", help="enqueue, inspect, and run durable jobs")
     job_commands = jobs.add_subparsers(dest="jobs_command", required=True)
     enqueue = job_commands.add_parser(
@@ -400,6 +422,47 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--limit", type=int, default=10)
     fetch.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
+
+    if args.command == "instagram-reconcile":
+        from .instagram_reconciliation import (
+            list_instagram_reconciliation,
+            resolve_instagram_operation,
+        )
+
+        database = args.root / BUILD_DIR / "jobs.sqlite3"
+        if args.instagram_command == "list":
+            try:
+                operations = list_instagram_reconciliation(database, limit=args.limit)
+            except ValueError as exc:
+                parser.error(str(exc))
+            if not operations:
+                print("no Instagram operations require reconciliation")
+                return 0
+            for operation in operations:
+                print(
+                    f"{operation['operation_key']} "
+                    f"container={operation['container_id']} "
+                    f"status={operation['status']} "
+                    f"updated_at={datetime.fromtimestamp(operation['updated_at'], UTC).isoformat()} "
+                    f"output={operation['output'] or '-'}"
+                )
+            return 0
+        try:
+            result = resolve_instagram_operation(
+                database,
+                operation_key=args.operation_key,
+                resolution=args.resolution,
+                actor=args.actor,
+                note=args.note,
+            )
+        except (ValueError, OSError) as exc:
+            parser.error(str(exc))
+        print(
+            f"resolved Instagram operation {result['operation_key']} "
+            f"container={result['container_id']} "
+            f"resolution={result['resolution']} status={result['status']}"
+        )
+        return 0
 
     if args.command == "jobs":
         from .jobs import JobQueue
