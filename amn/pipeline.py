@@ -414,9 +414,13 @@ def main(argv: list[str] | None = None) -> int:
     schedule_tick.add_argument("--limit", type=int, default=100)
     schedule_tick.add_argument("--root", type=Path, default=Path.cwd())
 
-    alerts = sub.add_parser("alerts", help="inspect incidents and send deduplicated operator alerts")
+    alerts = sub.add_parser(
+        "alerts", help="inspect incidents and send deduplicated operator alerts"
+    )
     alert_commands = alerts.add_subparsers(dest="alerts_command", required=True)
-    alert_check = alert_commands.add_parser("check", help="check operational health and notify Telegram")
+    alert_check = alert_commands.add_parser(
+        "check", help="check operational health and notify Telegram"
+    )
     alert_check.add_argument("--stale-after-seconds", type=int, default=900)
     alert_check.add_argument("--cooldown-seconds", type=int, default=21600)
     alert_check.add_argument("--root", type=Path, default=Path.cwd())
