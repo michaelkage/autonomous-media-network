@@ -32,6 +32,31 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
         return [_check("configuration", "validation", False, str(exc))]
 
     results: list[dict[str, Any]] = []
+    storage_config = config.get("storage")
+    social_targets = [
+        target
+        for target in config.get("targets", [])
+        if target.get("enabled", True)
+        and target.get("platform", "").lower() in {"instagram", "tiktok"}
+    ]
+    if storage_config and social_targets:
+        try:
+            from .storage import S3MediaStorage
+
+            S3MediaStorage.from_config(storage_config).check_access()
+            results.append(
+                _check("storage", "bucket_access", True, "S3-compatible bucket is accessible")
+            )
+        except Exception:
+            results.append(
+                _check(
+                    "storage",
+                    "bucket_access",
+                    False,
+                    "bucket access failed; verify S3 support, credentials, endpoint, and bucket",
+                )
+            )
+
     manifest_path = root / "build" / "manifest.json"
     try:
         manifest_text = (
