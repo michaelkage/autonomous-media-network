@@ -209,6 +209,9 @@ class TikTokPublisher(Publisher):
             operation = self._load_operation(operation_key)
             if operation and operation[1] == "complete":
                 return True
+            if operation and operation[1] == "failed":
+                self._delete_operation(operation_key)
+                operation = None
 
             if operation:
                 publish_id = operation[0]
