@@ -357,9 +357,7 @@ def main(argv: list[str] | None = None) -> int:
         "instagram-reconcile",
         help="inspect and manually resolve ambiguous Instagram publications",
     )
-    instagram_commands = instagram_reconcile.add_subparsers(
-        dest="instagram_command", required=True
-    )
+    instagram_commands = instagram_reconcile.add_subparsers(dest="instagram_command", required=True)
     instagram_list = instagram_commands.add_parser(
         "list", help="list Instagram operations awaiting manual reconciliation"
     )
