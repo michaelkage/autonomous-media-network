@@ -387,6 +387,9 @@ def main(argv: list[str] | None = None) -> int:
     schedule_disable = schedule_commands.add_parser("disable", help="disable a recurring schedule")
     schedule_disable.add_argument("--id", required=True)
     schedule_disable.add_argument("--root", type=Path, default=Path.cwd())
+    schedule_enable = schedule_commands.add_parser("enable", help="re-enable a recurring schedule")
+    schedule_enable.add_argument("--id", required=True)
+    schedule_enable.add_argument("--root", type=Path, default=Path.cwd())
     schedule_tick = schedule_commands.add_parser("tick", help="enqueue schedules that are due")
     schedule_tick.add_argument("--limit", type=int, default=100)
     schedule_tick.add_argument("--root", type=Path, default=Path.cwd())
@@ -432,6 +435,11 @@ def main(argv: list[str] | None = None) -> int:
                 if not queue.disable_schedule(args.id):
                     parser.error(f"schedule not found or already disabled: {args.id}")
                 print(f"disabled schedule {args.id}")
+                return 0
+            if args.schedule_command == "enable":
+                if not queue.enable_schedule(args.id):
+                    parser.error(f"schedule not found or already enabled: {args.id}")
+                print(f"enabled schedule {args.id}")
                 return 0
             if args.limit < 1 or args.limit > 1000:
                 parser.error("--limit for schedule tick must be between 1 and 1000")
