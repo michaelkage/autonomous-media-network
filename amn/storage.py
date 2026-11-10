@@ -108,9 +108,7 @@ class S3MediaStorage:
 class StorageBackedPublisher(Publisher):
     """Upload each local asset before delegating to a URL-based publisher."""
 
-    def __init__(
-        self, publisher: Publisher, storage: S3MediaStorage, public_base_url: str
-    ) -> None:
+    def __init__(self, publisher: Publisher, storage: S3MediaStorage, public_base_url: str) -> None:
         self.publisher = publisher
         self.storage = storage
         self.public_base_url = public_base_url
