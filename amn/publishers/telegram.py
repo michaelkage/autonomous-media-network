@@ -17,9 +17,11 @@ class TelegramPublisher(Publisher):
             raise ValueError("Telegram bot token and chat id are required")
         self.chat_id, self.timeout = chat_id, timeout
         self.endpoint = f"https://api.telegram.org/bot{bot_token}"
+        self.retry_after: float | None = None
         self.session = requests.Session()
 
     def _send_file(self, method: str, field: str, path: Path, caption: str) -> bool:
+        self.retry_after = None
         try:
             with path.open("rb") as handle:
                 response = self.session.post(
@@ -30,7 +32,8 @@ class TelegramPublisher(Publisher):
                 )
             if response.status_code == 429:
                 retry_after = response.json().get("parameters", {}).get("retry_after", 1)
-                raise RuntimeError(f"Telegram rate limited; retry after {retry_after}s")
+                self.retry_after = max(0.0, float(retry_after))
+                raise RuntimeError(f"Telegram rate limited; retry after {self.retry_after}s")
             response.raise_for_status()
             payload = response.json()
             if not payload.get("ok"):
