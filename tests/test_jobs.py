@@ -228,9 +228,7 @@ def test_concurrent_schedule_ticks_enqueue_once(tmp_path: Path) -> None:
     queue.add_schedule("every-minute", "pipeline", {}, 60, first_run_at=100)
 
     with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(
-            pool.map(lambda _: queue.enqueue_due_schedules(now=100), range(8))
-        )
+        results = list(pool.map(lambda _: queue.enqueue_due_schedules(now=100), range(8)))
 
     assert sum(results) == 1
     assert queue.counts()["pending"] == 1
