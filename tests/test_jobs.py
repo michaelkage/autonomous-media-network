@@ -154,8 +154,6 @@ def test_pipeline_jobs_are_serialized_across_workers(tmp_path: Path) -> None:
     assert second is not None and second["id"] == second_id
 
 
-
-
 def test_schedule_enqueues_due_job_and_skips_missed_intervals(tmp_path: Path) -> None:
     queue = JobQueue(tmp_path / "jobs.sqlite3")
     queue.add_schedule(
