@@ -179,6 +179,14 @@ def targets_for(item: dict[str, Any], config: dict[str, Any]) -> list[dict[str, 
     ]
 
 
+class _TelegramDocumentAdapter:
+    def __init__(self, publisher: Any) -> None:
+        self.publisher = publisher
+
+    def publish(self, image_path: Path, caption: str) -> bool:
+        return self.publisher.publish_document(image_path, caption)
+
+
 def publish_routed_manifest(root: Path) -> dict[str, int]:
     """Dispatch each manifest item only to targets selected by its route."""
     from .publish import BlueskyPublisher, publish_manifest
@@ -254,8 +262,30 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
             totals[target["id"]] = publish_manifest(
                 temporary_manifest, publisher, root=root, platform=target["id"]
             )
-            if platform == "telegram" and totals[target["id"]]:
-                publisher.publish_document(temporary_manifest)
+            if platform == "telegram":
+                document_index = root / "build" / f".routed-{target['id']}-document.json"
+                document_index.write_text(
+                    json.dumps(
+                        {
+                            "passed": [
+                                {
+                                    "output": temporary_manifest.relative_to(root).as_posix(),
+                                    "caption": "AMN delivery manifest",
+                                }
+                            ]
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                try:
+                    publish_manifest(
+                        document_index,
+                        _TelegramDocumentAdapter(publisher),
+                        root=root,
+                        platform=target["id"],
+                    )
+                finally:
+                    document_index.unlink(missing_ok=True)
         finally:
             temporary_manifest.unlink(missing_ok=True)
     return totals
