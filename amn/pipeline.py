@@ -346,7 +346,10 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--watermark", default="")
     run_parser.add_argument("--dry-run", action="store_true")
     pub = sub.add_parser("publish")
-    pub.add_argument("--platform", choices=["mock", "bluesky", "telegram", "facebook", "instagram", "tiktok"])
+    pub.add_argument(
+        "--platform",
+        choices=["mock", "bluesky", "telegram", "facebook", "instagram", "tiktok"],
+    )
     pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
     pub.add_argument("--root", type=Path, default=Path.cwd())
     doctor = sub.add_parser(
@@ -730,7 +733,10 @@ def main(argv: list[str] | None = None) -> int:
             token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
             page_id = os.environ.get("FACEBOOK_PAGE_ID")
             if not token or not page_id:
-                print("error: FACEBOOK_PAGE_ACCESS_TOKEN and FACEBOOK_PAGE_ID required", file=sys.stderr)
+                print(
+                    "error: FACEBOOK_PAGE_ACCESS_TOKEN and FACEBOOK_PAGE_ID required",
+                    file=sys.stderr,
+                )
                 return 1
             publisher = FacebookPagePublisher(token, page_id)
         elif args.platform == "instagram":
