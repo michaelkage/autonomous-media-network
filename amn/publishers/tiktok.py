@@ -158,8 +158,7 @@ class TikTokPublisher(Publisher):
                 "status TEXT NOT NULL, updated_at REAL NOT NULL)"
             )
             row = db.execute(
-                "SELECT publish_id, status FROM tiktok_publish_operations "
-                "WHERE operation_key = ?",
+                "SELECT publish_id, status FROM tiktok_publish_operations WHERE operation_key = ?",
                 (operation_key,),
             ).fetchone()
         return (str(row[0]), str(row[1])) if row else None
