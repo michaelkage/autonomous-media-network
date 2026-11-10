@@ -373,4 +373,7 @@ def test_reddit_fetch_cli_requires_oauth_credentials(tmp_path: Path, monkeypatch
     )
 
     assert result == 1
-    assert "REDDIT_USER_ACCESS_TOKEN and AMN_REDDIT_USER_AGENT are required" in capsys.readouterr().err
+    assert (
+        "REDDIT_USER_ACCESS_TOKEN and AMN_REDDIT_USER_AGENT are required"
+        in capsys.readouterr().err
+    )
