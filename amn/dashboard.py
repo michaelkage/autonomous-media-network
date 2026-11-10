@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,15 @@ def create_app(root: Path = ROOT) -> Any:
                 sorted(p.name for p in folder.iterdir() if p.is_file()) if folder.is_dir() else []
             )
             result[name] = {"count": len(files), "files": files[:200]}
+        manifest = root / "build" / "manifest.json"
+        if manifest.is_file():
+            try:
+                data = json.loads(manifest.read_text(encoding="utf-8"))
+                result["recent_rejections"] = data.get("rejected", [])[-100:]
+            except (OSError, ValueError):
+                result["recent_rejections"] = [{"error": "manifest is unreadable"}]
+        else:
+            result["recent_rejections"] = []
         return result
 
     @app.get("/api/config")
