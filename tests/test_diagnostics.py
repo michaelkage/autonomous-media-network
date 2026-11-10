@@ -175,3 +175,35 @@ def test_diagnostics_checks_facebook_page_access(tmp_path: Path, monkeypatch) ->
     ]
     assert session.get.call_args.args[0].endswith("/v26.0/123456")
     assert session.get.call_args.kwargs["params"]["access_token"] == "page-secret"
+
+
+def test_diagnostics_checks_x_user_token(tmp_path: Path, monkeypatch) -> None:
+    _workspace(
+        tmp_path,
+        {
+            "targets": [
+                {
+                    "id": "x",
+                    "platform": "x",
+                    "enabled": True,
+                }
+            ],
+            "routes": {},
+        },
+    )
+    monkeypatch.setenv("X_USER_ACCESS_TOKEN", "user-token")
+    session = MagicMock()
+    session.get.return_value = _response({"data": {"id": "987654", "name": "amn"}})
+
+    results = run_diagnostics(tmp_path, session=session)
+
+    assert results == [
+        {
+            "target": "x",
+            "check": "account",
+            "ok": True,
+            "detail": "X user token accepted",
+        }
+    ]
+    assert session.get.call_args.args[0] == "https://api.x.com/2/users/me"
+    assert session.get.call_args.kwargs["headers"]["Authorization"] == "Bearer user-token"
