@@ -21,11 +21,11 @@ amn publish --platform mock --root .
 amn publish --routed --root .
 ```
 
-Production runs fail closed when `AMN_WATERMARK_TEXT` is missing. Accepted output names include a content digest, preventing collisions. Writes are atomic, and duplicate-database corruption is surfaced rather than silently disabling protection.
+Production runs fail closed when `AMN_WATERMARK_TEXT` is missing. When an output basename already exists, AMN appends a source digest instead of overwriting it. Writes are atomic, and duplicate-database corruption is surfaced rather than silently disabling protection.
 
 ## Distribution and targets
 
-Copy `config/amn.example.json` to `config/amn.json`. Routes map item categories/tags in each image sidecar to enabled targets. Example sidecar metadata: `"categories": ["landscape"]`. The default route is empty, so content is never broadcast accidentally. Use `amn publish --routed --root .` to dispatch through those mappings. Credentials belong in environment variables, not JSON configuration.
+Copy `config/amn.example.json` to `config/amn.json`. If `--query` is omitted from `amn fetch`, AMN ingests every subreddit listed in `sources.reddit`. Routes map item categories/tags or the source subreddit in each image sidecar to enabled targets. Example sidecar metadata: `"categories": ["landscape"]`. The default route is empty, so content is never broadcast accidentally. Use `amn publish --routed --root .` to dispatch through those mappings. Credentials belong in environment variables, not JSON configuration.
 
 Supported publisher adapters include Bluesky, Telegram, Instagram Graph API, and TikTok Content Posting API photo posts:
 
@@ -44,7 +44,7 @@ TIKTOK_ACCESS_TOKEN="..." TIKTOK_PRIVACY_LEVEL="SELF_ONLY" TIKTOK_DIRECT_POST_EN
 
 Publishing resolves manifest paths against the project root and records per-platform delivery state in `build/publish-state.json`. Failed items remain retryable; successful items are skipped on subsequent runs.
 
-Instagram publishing uses Meta's two-step container flow and requires a professional account plus a publicly reachable JPEG URL. TikTok photo publishing uses the current PHOTO content-init endpoint, requires a verified public URL domain, creator privacy-level validation, and the `video.publish` scope. TikTok's API also restricts unaudited apps to private visibility. Configure these targets disabled until the app review, OAuth scopes, verified media host, and account-level tests are complete. Static images use TikTok's photo API; no fake looping video conversion is needed. See [Meta content publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing) and [TikTok Direct Post](https://developers.tiktok.com/docs/en/content-posting-api-get-started).
+The public media URL must serve the exact outbox filenames; AMN does not expose your local filesystem to Meta or TikTok. Instagram publishing uses Meta's two-step container flow and requires a professional account plus a publicly reachable JPEG URL. TikTok photo publishing uses the current PHOTO content-init endpoint, requires a verified public URL domain, creator privacy-level validation, and the `video.publish` scope. TikTok's API also restricts unaudited apps to private visibility. Its creator-info response must be reviewed and the configured privacy option must match the account's returned options. Configure these targets disabled until the app review, OAuth scopes, verified media host, and account-level tests are complete. Static images use TikTok's photo API; no fake looping video conversion is needed. See [Meta content publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing) and [TikTok Direct Post](https://developers.tiktok.com/docs/en/content-posting-api-get-started).
 
 ## Diagnostics dashboard
 
@@ -61,3 +61,4 @@ Open `http://127.0.0.1:8765`. The optional FastAPI dashboard exposes workspace c
 - Telegram bots must be added to the destination channel with permission to post.
 - Instagram/TikTok reposting must respect creator rights, platform policies, and required attribution.
 - Reddit's public endpoint does not expose view counts; AMN does not fabricate an engagement denominator.
+- Reddit subreddit ingestion is implemented. Arbitrary Instagram/TikTok competitor-profile scraping is not; use approved platform APIs and authorized accounts.
