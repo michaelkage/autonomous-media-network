@@ -206,9 +206,7 @@ def test_tiktok_resumes_pending_publish_after_restart(tmp_path: Path) -> None:
         assert restarted.publish(image, "caption") is True
 
     assert restarted.session.post.call_count == 1
-    assert restarted.session.post.call_args.kwargs["json"] == {
-        "publish_id": "durable-publish-id"
-    }
+    assert restarted.session.post.call_args.kwargs["json"] == {"publish_id": "durable-publish-id"}
 
 
 def test_tiktok_completed_operation_is_not_submitted_again(tmp_path: Path) -> None:
