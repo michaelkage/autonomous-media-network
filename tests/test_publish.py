@@ -18,7 +18,7 @@ def _publish_from_process(manifest_path: str, root: str, marker_path: str, start
     class SlowPublisher(Publisher):
         def publish(self, image_path: Path, caption: str) -> bool:
             with Path(marker_path).open("a", encoding="utf-8") as handle:
-                handle.write(f"{image_path.name}\\n")
+                handle.write(f"{image_path.name}\n")
                 handle.flush()
             time.sleep(0.3)
             return True
