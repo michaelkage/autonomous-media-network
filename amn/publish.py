@@ -129,13 +129,19 @@ def publish_manifest(
             print(f"publish asset missing: {image_path}")
             continue
         digest = item.get("sha256") or hashlib.sha256(image_path.read_bytes()).hexdigest()
-        if digest in published:
+        delivery_key = f"{digest}:{relative.as_posix()}"
+        if delivery_key in published:
             continue
         caption = item.get("caption", "No caption provided.")
         for attempt in range(retries + 1):
             limiter.wait()
             if publisher.publish(image_path, caption):
-                published[digest] = {"source": item.get("source"), "published_at": time.time()}
+                published[delivery_key] = {
+                    "digest": digest,
+                    "output": relative.as_posix(),
+                    "source": item.get("source"),
+                    "published_at": time.time(),
+                }
                 _save_state(state_file, state)
                 successes += 1
                 break
