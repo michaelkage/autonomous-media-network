@@ -298,9 +298,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                 )
                 community.raise_for_status()
                 community_data = community.json().get("data", {})
-                if str(community_data.get("display_name", "")).lower() != str(
-                    subreddit
-                ).lower():
+                if str(community_data.get("display_name", "")).lower() != str(subreddit).lower():
                     raise ValueError("Reddit subreddit lookup failed")
                 results.append(
                     _check(
