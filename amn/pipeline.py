@@ -435,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
             result = check_operator_alerts(
                 args.root / BUILD_DIR / "jobs.sqlite3",
                 bot_token=os.environ.get("TELEGRAM_BOT_TOKEN"),
-                chat_id=os.environ.get("TELEGRAM_CHAT_ID"),
+                chat_id=os.environ.get("TELEGRAM_ALERT_CHAT_ID"),
                 stale_after_seconds=args.stale_after_seconds,
                 cooldown_seconds=args.cooldown_seconds,
             )
@@ -445,7 +445,7 @@ def main(argv: list[str] | None = None) -> int:
         if not result["notifications_configured"] and result["active"]:
             print(
                 "warning: incidents were recorded but Telegram notifications are not configured "
-                "(TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID)",
+                "(TELEGRAM_BOT_TOKEN/TELEGRAM_ALERT_CHAT_ID)",
                 file=sys.stderr,
             )
         return 0 if not result["failed"] else 1
