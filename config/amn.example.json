@@ -28,6 +28,7 @@
       "token_env": "TIKTOK_ACCESS_TOKEN"
     }
   ],
+  "storage": null,
   "routes": {
     "default": [],
     "landscape": ["telegram-main", "instagram-main", "tiktok-main"],
