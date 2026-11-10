@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from amn.publish import RateLimiter
 from amn.publishers.instagram import InstagramPublisher
 from amn.publishers.telegram import TelegramPublisher
@@ -47,8 +49,6 @@ def test_instagram_runs_container_processing_and_publish_flow(tmp_path: Path) ->
 
 
 def test_instagram_requires_public_https_media_host() -> None:
-    import pytest
-
     with pytest.raises(ValueError, match="public HTTPS"):
         InstagramPublisher("token", "123456", "http://localhost/outbox")
 
@@ -77,8 +77,6 @@ def test_tiktok_photo_publish_checks_creator_privacy_and_status(tmp_path: Path) 
 
 
 def test_tiktok_rejects_unapproved_privacy_level(tmp_path: Path) -> None:
-    import pytest
-
     image = tmp_path / "photo.jpg"
     image.write_bytes(b"image")
     publisher = TikTokPublisher(
