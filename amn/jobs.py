@@ -105,8 +105,14 @@ class JobQueue:
             raise ValueError("job payload must be an object")
         if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1:
             raise ValueError("max_attempts must be a positive integer")
-        if delay < 0:
-            raise ValueError("delay cannot be negative")
+        if isinstance(delay, bool):
+            raise ValueError("delay must be a finite non-negative number")
+        try:
+            delay = float(delay)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("delay must be a finite non-negative number") from exc
+        if not math.isfinite(delay) or delay < 0 or not math.isfinite(time.time() + delay):
+            raise ValueError("delay must be a finite non-negative number")
         if dedupe_key is not None and (not isinstance(dedupe_key, str) or not dedupe_key.strip()):
             raise ValueError("dedupe_key must be a non-empty string")
         now = time.time()
@@ -133,9 +139,19 @@ class JobQueue:
     def claim(self, worker_id: str, *, lease_seconds: float = 300) -> dict[str, Any] | None:
         if not isinstance(worker_id, str) or not worker_id.strip():
             raise ValueError("worker_id must be a non-empty string")
-        if lease_seconds <= 0:
-            raise ValueError("lease_seconds must be positive")
+        if isinstance(lease_seconds, bool):
+            raise ValueError("lease_seconds must be a finite positive number")
+        try:
+            lease_seconds = float(lease_seconds)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("lease_seconds must be a finite positive number") from exc
         now = time.time()
+        if (
+            not math.isfinite(lease_seconds)
+            or lease_seconds <= 0
+            or not math.isfinite(now + lease_seconds)
+        ):
+            raise ValueError("lease_seconds must be a finite positive number")
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             # A crashed worker's lease expires. Retry if budget remains, otherwise
@@ -190,9 +206,19 @@ class JobQueue:
             return self._decode(claimed)
 
     def heartbeat(self, job_id: str, worker_id: str, *, lease_seconds: float = 300) -> bool:
-        if lease_seconds <= 0:
-            raise ValueError("lease_seconds must be positive")
+        if isinstance(lease_seconds, bool):
+            raise ValueError("lease_seconds must be a finite positive number")
+        try:
+            lease_seconds = float(lease_seconds)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("lease_seconds must be a finite positive number") from exc
         now = time.time()
+        if (
+            not math.isfinite(lease_seconds)
+            or lease_seconds <= 0
+            or not math.isfinite(now + lease_seconds)
+        ):
+            raise ValueError("lease_seconds must be a finite positive number")
         with closing(self._connect()) as db:
             changed = db.execute(
                 """
@@ -225,6 +251,21 @@ class JobQueue:
         *,
         retry_delay: float | None = None,
     ) -> bool:
+        if retry_delay is not None:
+            if isinstance(retry_delay, bool):
+                raise ValueError("retry_delay must be a finite non-negative number")
+            try:
+                retry_delay = float(retry_delay)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "retry_delay must be a finite non-negative number"
+                ) from exc
+            if (
+                not math.isfinite(retry_delay)
+                or retry_delay < 0
+                or not math.isfinite(time.time() + retry_delay)
+            ):
+                raise ValueError("retry_delay must be a finite non-negative number")
         now = time.time()
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
