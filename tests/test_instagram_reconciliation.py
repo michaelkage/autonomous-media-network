@@ -52,8 +52,7 @@ def test_instagram_resolution_published_is_atomic_and_audited(tmp_path: Path) ->
     database = _database(tmp_path)
     with sqlite3.connect(database) as db:
         db.execute(
-            "UPDATE instagram_publish_operations SET delivery_id = ? "
-            "WHERE operation_key = ?",
+            "UPDATE instagram_publish_operations SET delivery_id = ? WHERE operation_key = ?",
             ("original-manifest-delivery", "ambiguous-a"),
         )
 
