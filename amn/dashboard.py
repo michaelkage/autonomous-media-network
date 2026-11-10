@@ -13,6 +13,30 @@ from urllib.parse import urlsplit
 from .distribution import load_config, save_config, validate_config
 
 ROOT = Path(os.environ.get("AMN_ROOT", Path.cwd())).resolve()
+_SECRET_KEYS = {
+    "token",
+    "access_token",
+    "refresh_token",
+    "password",
+    "app_password",
+    "secret",
+    "client_secret",
+    "api_key",
+    "private_key",
+    "bot_token",
+}
+
+
+def _redact_secrets(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _redact_secrets(item)
+            for key, item in value.items()
+            if key.lower() not in _SECRET_KEYS
+        }
+    if isinstance(value, list):
+        return [_redact_secrets(item) for item in value]
+    return value
 
 
 def create_app(root: Path = ROOT) -> Any:
@@ -73,19 +97,7 @@ def create_app(root: Path = ROOT) -> Any:
 
     @app.get("/api/config")
     def get_config() -> dict[str, Any]:
-        config = load_config(config_path)
-        for target in config.get("targets", []):
-            for key in list(target):
-                if key.lower() in {
-                    "token",
-                    "access_token",
-                    "refresh_token",
-                    "password",
-                    "secret",
-                    "client_secret",
-                }:
-                    target.pop(key, None)
-        return config
+        return _redact_secrets(load_config(config_path))
 
     @app.put("/api/config")
     def put_config(payload: dict[str, Any]) -> dict[str, str]:
