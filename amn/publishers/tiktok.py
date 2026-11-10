@@ -42,13 +42,24 @@ class SQLiteTokenRateLimiter:
     def wait(self) -> None:
         with closing(sqlite3.connect(self.database, timeout=30, isolation_level=None)) as db:
             db.execute("PRAGMA busy_timeout = 30000")
-            db.execute("CREATE TABLE IF NOT EXISTS provider_rate_limits (token_key TEXT PRIMARY KEY, next_allowed_at REAL NOT NULL)")
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS provider_rate_limits ("
+                "token_key TEXT PRIMARY KEY, next_allowed_at REAL NOT NULL)"
+            )
             db.execute("BEGIN IMMEDIATE")
             try:
                 now = time.time()
-                row = db.execute("SELECT next_allowed_at FROM provider_rate_limits WHERE token_key = ?", (self.token_key,)).fetchone()
+                row = db.execute(
+                    "SELECT next_allowed_at FROM provider_rate_limits WHERE token_key = ?",
+                    (self.token_key,),
+                ).fetchone()
                 slot = max(now, row[0] if row else now)
-                db.execute("INSERT INTO provider_rate_limits(token_key, next_allowed_at) VALUES (?, ?) ON CONFLICT(token_key) DO UPDATE SET next_allowed_at = excluded.next_allowed_at", (self.token_key, slot + self.min_interval))
+                db.execute(
+                    "INSERT INTO provider_rate_limits(token_key, next_allowed_at) "
+                    "VALUES (?, ?) ON CONFLICT(token_key) "
+                    "DO UPDATE SET next_allowed_at = excluded.next_allowed_at",
+                    (self.token_key, slot + self.min_interval),
+                )
                 db.commit()
             except BaseException:
                 db.rollback()
