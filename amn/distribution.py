@@ -282,7 +282,10 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
             subreddit = target.get("subreddit")
             media_url = target.get("public_base_url")
             if not token or not user_agent or not subreddit or not media_url:
-                print(f"skipping {target['id']}: Reddit token, User-Agent, subreddit or public_base_url missing")
+                print(
+                    f"skipping {target['id']}: Reddit token, User-Agent, "
+                    "subreddit or public_base_url missing"
+                )
                 continue
             publisher = RedditPublisher(token, str(subreddit), str(media_url), user_agent)
         elif platform == "x":
