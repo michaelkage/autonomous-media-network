@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from amn.dashboard import create_app
 from amn.jobs import JobQueue
 
+
 def test_dashboard_serves_ui_and_workspace_status(tmp_path: Path) -> None:
     for folder in ("inbox", "outbox", "rejected", "build"):
         (tmp_path / folder).mkdir()
