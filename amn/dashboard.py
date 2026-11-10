@@ -145,6 +145,15 @@ def create_app(root: Path = ROOT) -> Any:
             }
         return result
 
+    @app.get("/api/deliveries")
+    def delivery_history(limit: int = 100) -> dict[str, Any]:
+        from .delivery_events import delivery_event_snapshot
+
+        try:
+            return delivery_event_snapshot(root / "build" / "jobs.sqlite3", limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/config")
     def get_config() -> dict[str, Any]:
         return _redact_secrets(load_config(config_path))
