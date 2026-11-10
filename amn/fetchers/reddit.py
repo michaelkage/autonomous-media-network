@@ -42,7 +42,7 @@ class RedditFetcher:
             payload = post.get("data", {})
             image_url = payload.get("url", "")
             post_id = payload.get("id", "")
-            if (not post_id or not post_id.isalnum()
+            if (not re.fullmatch(r"[A-Za-z0-9_]{1,32}", str(post_id))
                     or not image_url.startswith("https://")
                     or not image_url.lower().split("?", 1)[0].endswith(_IMAGE_SUFFIXES)):
                 continue
