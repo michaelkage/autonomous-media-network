@@ -151,3 +151,63 @@ def test_pipeline_jobs_are_serialized_across_workers(tmp_path: Path) -> None:
     assert queue.complete(first_id, "worker-a")
     second = queue.claim("worker-b", lease_seconds=60)
     assert second is not None and second["id"] == second_id
+
+
+
+def test_schedule_enqueues_due_job_and_skips_missed_intervals(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+    queue.add_schedule(
+        "hourly-fetch",
+        "fetch",
+        {"query": "earthporn", "limit": 5},
+        3600,
+        first_run_at=1000,
+    )
+
+    assert queue.enqueue_due_schedules(now=1000) == 1
+    assert queue.enqueue_due_schedules(now=1000) == 0
+    assert queue.enqueue_due_schedules(now=10_000) == 1
+
+    jobs = queue.list(limit=10)
+    assert len(jobs) == 2
+    assert all(job["kind"] == "fetch" for job in jobs)
+    assert all(job["payload"]["query"] == "earthporn" for job in jobs)
+    schedule = queue.list_schedules()[0]
+    assert schedule["next_run_at"] > 10_000
+    assert schedule["enabled"] is True
+
+
+def test_schedule_can_be_disabled_and_duplicate_ids_are_rejected(tmp_path: Path) -> None:
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+    queue.add_schedule("nightly", "pipeline", {}, 86_400, first_run_at=0)
+
+    with pytest.raises(ValueError, match="already exists"):
+        queue.add_schedule("nightly", "pipeline", {}, 3600)
+
+    assert queue.disable_schedule("nightly") is True
+    assert queue.disable_schedule("nightly") is False
+    assert queue.enqueue_due_schedules(now=100_000) == 0
+    assert queue.list_schedules()[0]["enabled"] is False
+
+
+def test_schedule_cli_add_list_tick_and_disable(tmp_path: Path, capsys) -> None:
+    root = str(tmp_path)
+    assert main(
+        [
+            "jobs", "schedule", "add", "--id", "daily-pipeline",
+            "--kind", "pipeline", "--every-seconds", "86400", "--root", root,
+        ]
+    ) == 0
+    assert main(["jobs", "schedule", "list", "--root", root]) == 0
+    assert "daily-pipeline enabled pipeline" in capsys.readouterr().out
+
+    queue = JobQueue(tmp_path / "build" / "jobs.sqlite3")
+    schedule = queue.list_schedules()[0]
+    with __import__("sqlite3").connect(queue.database) as db:
+        db.execute("UPDATE schedules SET next_run_at = 0 WHERE id = ?", ("daily-pipeline",))
+
+    assert main(["jobs", "schedule", "tick", "--root", root]) == 0
+    assert queue.counts()["pending"] == 1
+    assert main(
+        ["jobs", "schedule", "disable", "--id", "daily-pipeline", "--root", root]
+    ) == 0
