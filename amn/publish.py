@@ -68,6 +68,19 @@ def _bind_delivery_context(publisher: Publisher, delivery_id: str, output: str) 
         current = getattr(current, "publisher", None)
 
 
+def _provider_message_id(publisher: Publisher) -> str | int | None:
+    """Read an optional provider receipt through transparent publisher wrappers."""
+    current: Any = publisher
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        value = getattr(current, "last_message_id", None)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+        current = getattr(current, "publisher", None)
+    return None
+
+
 def _retry_after_from_response(response: Any) -> float | None:
     if response is None:
         return None
@@ -261,6 +274,7 @@ def _publish_manifest_unlocked(
                     output=relative.as_posix(),
                     event_type="provider_accepted",
                     attempt=attempt_number,
+                    provider_message_id=_provider_message_id(publisher),
                 )
                 published[delivery_key] = {
                     "digest": digest,
