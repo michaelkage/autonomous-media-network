@@ -179,8 +179,6 @@ def process_image(
         }
     if not dry_run:
         record["sha256"] = _sha256(output)
-        if detector:
-            detector.record_from_path(source)
     return verdict, record
 
 
@@ -281,6 +279,7 @@ def run(
         previous = completed.get(source_key)
         if previous is not None:
             if previous["outcome"] == "passed":
+                detector.record_from_path(source)
                 source.unlink(missing_ok=True)
                 sidecar.unlink(missing_ok=True)
             else:
@@ -324,6 +323,7 @@ def run(
             completed[source_key] = entry
             _save_checkpoint(checkpoint_path, checkpoint)
             if entry["outcome"] == "passed":
+                detector.record_from_path(source)
                 source.unlink(missing_ok=True)
                 sidecar.unlink(missing_ok=True)
             else:
