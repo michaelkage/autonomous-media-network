@@ -8,7 +8,7 @@ from urllib.parse import quote, urlparse
 
 import requests
 
-from ..publish import Publisher
+from ..publish import Publisher, RateLimiter
 
 __all__ = ["TikTokPublisher"]
 
@@ -38,10 +38,12 @@ class TikTokPublisher(Publisher):
         self.privacy_level = privacy_level
         self.timeout, self.poll_interval, self.max_polls = timeout, poll_interval, max_polls
         self.session = requests.Session()
+        self.rate_limiter = RateLimiter(min_interval=10.0)
         self.headers = {"Authorization": f"Bearer {self.token}",
                         "Content-Type": "application/json; charset=UTF-8"}
 
     def _request(self, endpoint: str, payload: dict) -> dict:
+        self.rate_limiter.wait()
         response = self.session.post(
             f"{self.API}/{endpoint}/", headers=self.headers, json=payload, timeout=self.timeout
         )
