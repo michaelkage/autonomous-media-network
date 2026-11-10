@@ -100,10 +100,18 @@ def record_delivery_event(
             raise
 
 
-def delivery_event_snapshot(database: Path, limit: int = 100) -> dict[str, Any]:
-    """Return bounded delivery history and sanitized provider callback observability."""
+def delivery_event_snapshot(
+    database: Path, limit: int = 100, stale_after_seconds: int = 900
+) -> dict[str, Any]:
+    """Return bounded delivery history and age-based provider reconciliation."""
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
         raise ValueError("limit must be an integer between 1 and 500")
+    if (
+        isinstance(stale_after_seconds, bool)
+        or not isinstance(stale_after_seconds, int)
+        or not 60 <= stale_after_seconds <= 86400
+    ):
+        raise ValueError("stale_after_seconds must be an integer between 60 and 86400")
     empty = {
         "counts": {},
         "recent": [],
@@ -112,11 +120,19 @@ def delivery_event_snapshot(database: Path, limit: int = 100) -> dict[str, Any]:
             "last_received_at": None,
             "latest_latency_seconds": None,
         },
-        "tiktok_operations": {"pending": 0, "complete": 0, "failed": 0},
+        "tiktok_operations": {
+            "pending": 0,
+            "stalled": 0,
+            "complete": 0,
+            "failed": 0,
+            "stale_after_seconds": stale_after_seconds,
+            "recent_stalled": [],
+        },
     }
     if not Path(database).is_file():
         return empty
 
+    now = time.time()
     with closing(_connect(database)) as db:
         table = db.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'delivery_events'"
@@ -186,12 +202,34 @@ def delivery_event_snapshot(database: Path, limit: int = 100) -> dict[str, Any]:
         ).fetchone()
         operations = empty["tiktok_operations"].copy()
         if operations_table:
-            for row in db.execute(
-                "SELECT status, COUNT(*) AS count FROM tiktok_publish_operations GROUP BY status"
-            ):
+            columns = {row[1] for row in db.execute("PRAGMA table_info(tiktok_publish_operations)")}
+            output_column = "output" if "output" in columns else "NULL"
+            rows = db.execute(
+                "SELECT publish_id, status, updated_at, "
+                + output_column
+                + " AS output FROM tiktok_publish_operations"
+            ).fetchall()
+            stalled: list[dict[str, Any]] = []
+            for row in rows:
                 status = str(row["status"])
-                if status in operations:
-                    operations[status] = int(row["count"])
+                if status == "pending":
+                    age = max(0.0, now - float(row["updated_at"]))
+                    if age >= stale_after_seconds:
+                        operations["stalled"] += 1
+                        stalled.append(
+                            {
+                                "publish_id": str(row["publish_id"]),
+                                "output": str(row["output"]) if row["output"] else None,
+                                "age_seconds": int(age),
+                            }
+                        )
+                    else:
+                        operations["pending"] += 1
+                elif status in {"complete", "failed"}:
+                    operations[status] += 1
+            operations["recent_stalled"] = sorted(
+                stalled, key=lambda item: item["age_seconds"], reverse=True
+            )[:25]
 
     return {
         "counts": counts,
