@@ -27,16 +27,24 @@ Production runs fail closed when `AMN_WATERMARK_TEXT` is missing. Accepted outpu
 
 Copy `config/amn.example.json` to `config/amn.json`. Routes map item categories/tags in each image sidecar to enabled targets. Example sidecar metadata: `"categories": ["landscape"]`. The default route is empty, so content is never broadcast accidentally. Use `amn publish --routed --root .` to dispatch through those mappings. Credentials belong in environment variables, not JSON configuration.
 
-Supported publisher adapters currently include Bluesky and Telegram:
+Supported publisher adapters include Bluesky, Telegram, Instagram Graph API, and TikTok Content Posting API photo posts:
 
 ```bash
 TELEGRAM_BOT_TOKEN="..." TELEGRAM_CHAT_ID="@your_channel" \
   amn publish --platform telegram --root .
+
+# Instagram: professional account + public HTTPS media hosting required
+INSTAGRAM_ACCESS_TOKEN="..." INSTAGRAM_USER_ID="..." AMN_PUBLIC_MEDIA_URL="https://media.example.com/outbox" \
+  amn publish --platform instagram --root .
+
+# TikTok photo post: verified media URL domain, video.publish scope and explicit privacy
+TIKTOK_ACCESS_TOKEN="..." TIKTOK_PRIVACY_LEVEL="SELF_ONLY" TIKTOK_DIRECT_POST_ENABLED="true" AMN_PUBLIC_MEDIA_URL="https://media.example.com/outbox" \
+  amn publish --platform tiktok --root .
 ```
 
 Publishing resolves manifest paths against the project root and records per-platform delivery state in `build/publish-state.json`. Failed items remain retryable; successful items are skipped on subsequent runs.
 
-Instagram Graph API and TikTok Content Posting API require separate account eligibility, OAuth scopes, media hosting/container workflows, and platform review. They are deliberately not represented as working adapters until those credentials and endpoint flows can be exercised against real test accounts. The publisher interface is the extension boundary; vetting remains platform-agnostic.
+Instagram publishing uses Meta's two-step container flow and requires a professional account plus a publicly reachable JPEG URL. TikTok photo publishing uses the current PHOTO content-init endpoint, requires a verified public URL domain, creator privacy-level validation, and the `video.publish` scope. TikTok's API also restricts unaudited apps to private visibility. Configure these targets disabled until the app review, OAuth scopes, verified media host, and account-level tests are complete. Static images use TikTok's photo API; no fake looping video conversion is needed. See [Meta content publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing) and [TikTok Direct Post](https://developers.tiktok.com/docs/en/content-posting-api-get-started).
 
 ## Diagnostics dashboard
 
