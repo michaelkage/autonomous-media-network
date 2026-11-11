@@ -156,7 +156,9 @@ amn jobs verify-backup --input "$BACKUP" --root .
 Before restoring, stop every AMN worker and scheduler process. Restore validates SQLite integrity and the AMN queue schema, refuses to overwrite a database with active job leases, and creates a timestamped pre-restore safety copy automatically:
 
 ```bash
-amn jobs restore --input ./backups/amn-YYYYMMDDTHHMMSSZ.sqlite3 --confirm-no-workers --root .
+BACKUP="$(find ./backups -maxdepth 1 -type f -name 'amn-*.sqlite3' -print | sort | tail -n 1)"
+test -n "$BACKUP"
+amn jobs restore --input "$BACKUP" --confirm-no-workers --root .
 ```
 
 Keep backups outside the workspace's ignored runtime directories and copy them to durable storage on a separate host or account. A backup on the same disk is not disaster recovery. Periodically verify a backup and perform a restore drill against a disposable workspace; never test recovery against the live queue.
