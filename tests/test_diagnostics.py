@@ -243,3 +243,35 @@ def test_diagnostics_checks_reddit_identity_subreddit_and_public_media(
     assert session.get.call_args_list[0].args[0] == "https://oauth.reddit.com/api/v1/me"
     assert session.get.call_args_list[0].kwargs["headers"]["Authorization"] == "Bearer reddit-token"
     assert session.get.call_args_list[2].args[0] == "https://media.example.com/outbox/asset.jpg"
+
+
+def test_diagnostics_checks_devvit_bridge_configuration(tmp_path: Path, monkeypatch) -> None:
+    _workspace(
+        tmp_path,
+        {
+            "targets": [
+                {
+                    "id": "reddit-devvit",
+                    "platform": "reddit_devvit",
+                    "enabled": True,
+                    "subreddit": "earthporn",
+                    "public_base_url": "https://media.example.com/outbox",
+                }
+            ],
+            "routes": {},
+        },
+    )
+    monkeypatch.setenv(
+        "AMN_REDDIT_DEVVIT_URL",
+        "https://amn-media-bridge-abc123-external.devvit.net/external/amn/publish",
+    )
+    monkeypatch.setenv("AMN_REDDIT_DEVVIT_TOKEN", "devvit_at_example")
+    session = MagicMock()
+    session.get.return_value = _response({"ok": True})
+
+    results = run_diagnostics(tmp_path, session=session)
+
+    assert [item["check"] for item in results] == ["bridge_configuration", "public_media"]
+    assert all(item["ok"] for item in results)
+    assert "not verified" in results[0]["detail"]
+    assert session.get.call_args.args[0] == "https://media.example.com/outbox/asset.jpg"
