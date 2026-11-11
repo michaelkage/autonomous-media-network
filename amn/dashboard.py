@@ -158,6 +158,110 @@ def create_app(root: Path = ROOT) -> Any:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/reddit-devvit/status")
+    def reddit_devvit_status(limit: int = 25) -> dict[str, Any]:
+        from .delivery_events import reddit_devvit_delivery_ids
+
+        if isinstance(limit, bool) or not 1 <= limit <= 50:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 50")
+
+        publish_url = os.environ.get("AMN_REDDIT_DEVVIT_URL", "")
+        status_url = os.environ.get("AMN_REDDIT_DEVVIT_STATUS_URL", "")
+        token = os.environ.get("AMN_REDDIT_DEVVIT_TOKEN", "")
+        if not status_url and publish_url:
+            parsed = urlsplit(publish_url)
+            if parsed.path.endswith("/external/amn/publish"):
+                status_url = parsed._replace(
+                    path=parsed.path.removesuffix("/publish") + "/status",
+                    query="",
+                    fragment="",
+                ).geturl()
+
+        parsed_status = urlsplit(status_url)
+        if (
+            parsed_status.scheme != "https"
+            or not parsed_status.hostname
+            or parsed_status.username
+            or parsed_status.password
+            or parsed_status.query
+            or parsed_status.fragment
+            or not parsed_status.path.endswith("/external/amn/status")
+            or not token.startswith("devvit_at_")
+        ):
+            return {
+                "configured": False,
+                "status": "not_configured",
+                "deliveries": [],
+            }
+
+        delivery_ids = reddit_devvit_delivery_ids(
+            root / "build" / "jobs.sqlite3",
+            limit=limit,
+        )
+        if not delivery_ids:
+            return {"configured": True, "status": "ok", "deliveries": []}
+
+        import requests
+
+        try:
+            response = requests.post(
+                status_url,
+                headers={
+                    "Authorization": f"bearer {token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json={"delivery_ids": delivery_ids},
+                timeout=5,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError) as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="Reddit Devvit provider status is temporarily unavailable",
+            ) from exc
+
+        if (
+            not isinstance(payload, dict)
+            or payload.get("status") != "ok"
+            or not isinstance(payload.get("deliveries"), list)
+        ):
+            raise HTTPException(
+                status_code=502,
+                detail="Reddit Devvit provider returned an invalid status response",
+            )
+
+        allowed_ids = set(delivery_ids)
+        deliveries = []
+        for item in payload["deliveries"]:
+            if not isinstance(item, dict) or item.get("delivery_id") not in allowed_ids:
+                continue
+            status = item.get("status")
+            post_id = item.get("post_id")
+            permalink = item.get("permalink")
+            updated_at = item.get("updated_at")
+            deliveries.append(
+                {
+                    "delivery_id": item["delivery_id"],
+                    "status": status if status in {
+                        "uploading",
+                        "submitting",
+                        "published",
+                        "unknown",
+                        "not_found",
+                    } else "invalid",
+                    "post_id": post_id if isinstance(post_id, str) else None,
+                    "permalink": (
+                        permalink
+                        if isinstance(permalink, str) and permalink.startswith("/r/")
+                        else None
+                    ),
+                    "updated_at": updated_at if isinstance(updated_at, str) else None,
+                }
+            )
+        return {"configured": True, "status": "ok", "deliveries": deliveries}
+
     @app.get("/api/alerts")
     def operator_alerts(limit: int = 50) -> dict[str, Any]:
         from .operator_alerts import operator_alert_snapshot
