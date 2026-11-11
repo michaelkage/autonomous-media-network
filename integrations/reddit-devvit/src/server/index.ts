@@ -279,7 +279,7 @@ app.post("/external/amn/status", async (c) => {
         ? {
             resolution: reconciliation.resolution,
             resolved_at: reconciliation.resolved_at ?? null,
-            actor: reconciliation.resolution_actor ?? null,
+            actor: reconciliation.actor,
           }
         : null,
     })),
