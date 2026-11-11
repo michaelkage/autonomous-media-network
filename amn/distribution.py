@@ -122,7 +122,16 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         "privacy_level",
         "direct_post_enabled",
     }
-    supported_platforms = {"telegram", "bluesky", "instagram", "tiktok", "facebook", "x", "reddit", "reddit_devvit"}
+    supported_platforms = {
+        "telegram",
+        "bluesky",
+        "instagram",
+        "tiktok",
+        "facebook",
+        "x",
+        "reddit",
+        "reddit_devvit",
+    }
     ids: set[str] = set()
     for target in targets:
         if not isinstance(target, dict):
