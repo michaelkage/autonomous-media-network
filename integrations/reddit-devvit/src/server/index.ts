@@ -176,4 +176,60 @@ app.post("/external/amn/publish", async (c) => {
   }
 });
 
+
+type ReconcileRequest = {
+  delivery_id: string;
+  resolution: "published" | "not_published";
+  post_id?: string;
+  permalink?: string;
+};
+
+app.post("/external/amn/reconcile", async (c) => {
+  let input: ReconcileRequest;
+  try {
+    input = await c.req.json<ReconcileRequest>();
+  } catch {
+    return c.json({ status: "error", error: "invalid_json" }, 400);
+  }
+  if (
+    !input ||
+    typeof input.delivery_id !== "string" ||
+    !/^[a-f0-9]{64}$/.test(input.delivery_id) ||
+    !["published", "not_published"].includes(input.resolution)
+  ) {
+    return c.json({ status: "error", error: "invalid_request" }, 400);
+  }
+
+  const existing = jsonRecord(await redis.hGet(DELIVERY_HASH, input.delivery_id));
+  if (!existing || existing.status === "published") {
+    return c.json({ status: "error", error: "delivery_not_reconcilable" }, 409);
+  }
+
+  if (input.resolution === "not_published") {
+    await redis.hDel(DELIVERY_HASH, [input.delivery_id]);
+    return c.json({ status: "reset", delivery_id: input.delivery_id });
+  }
+
+  if (
+    typeof input.post_id !== "string" ||
+    !/^[A-Za-z0-9]+$/.test(input.post_id.replace(/^t3_/, "")) ||
+    typeof input.permalink !== "string" ||
+    !input.permalink.startsWith("/r/")
+  ) {
+    return c.json({ status: "error", error: "valid_post_receipt_required" }, 400);
+  }
+  const [allowedSubreddit] = await Promise.all([settings.get("allowedSubreddit")]);
+  if (!allowedSubreddit || !input.permalink.startsWith(`/r/${allowedSubreddit}/comments/`)) {
+    return c.json({ status: "error", error: "post_receipt_subreddit_mismatch" }, 400);
+  }
+  const resolved: DeliveryRecord = {
+    status: "published",
+    post_id: input.post_id.replace(/^t3_/, ""),
+    permalink: input.permalink,
+    updated_at: new Date().toISOString(),
+  };
+  await redis.hSet(DELIVERY_HASH, { [input.delivery_id]: JSON.stringify(resolved) });
+  return c.json({ status: "published", post_id: resolved.post_id, permalink: resolved.permalink });
+});
+
 export default app;
