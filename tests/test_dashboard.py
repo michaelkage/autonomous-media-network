@@ -390,9 +390,7 @@ def test_dashboard_reddit_devvit_summary_reads_legacy_delivery_schema(tmp_path: 
     assert summary["recent"][0]["provider_message_id"] is None
 
 
-def test_dashboard_fetches_authenticated_reddit_provider_state(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_dashboard_fetches_authenticated_reddit_provider_state(tmp_path: Path, monkeypatch) -> None:
     from unittest.mock import MagicMock
 
     import requests
@@ -459,9 +457,7 @@ def test_dashboard_fetches_authenticated_reddit_provider_state(
     assert calls["timeout"] == 5
 
 
-def test_dashboard_reports_reddit_provider_status_unconfigured(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_dashboard_reports_reddit_provider_status_unconfigured(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("AMN_REDDIT_DEVVIT_URL", raising=False)
     monkeypatch.delenv("AMN_REDDIT_DEVVIT_STATUS_URL", raising=False)
     monkeypatch.delenv("AMN_REDDIT_DEVVIT_TOKEN", raising=False)
