@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 
@@ -37,7 +37,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
         target
         for target in config.get("targets", [])
         if target.get("enabled", True)
-        and target.get("platform", "").lower() in {"instagram", "tiktok", "reddit"}
+        and target.get("platform", "").lower() in {"instagram", "tiktok", "reddit", "reddit_devvit"}
     ]
     if storage_config and social_targets:
         try:
@@ -315,6 +315,36 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                         "account",
                         False,
                         "Reddit OAuth token, scope, or subreddit access rejected",
+                    )
+                )
+
+        elif platform == "reddit_devvit":
+            endpoint = os.environ.get(target.get("bridge_url_env", "AMN_REDDIT_DEVVIT_URL"))
+            token = os.environ.get(target.get("bridge_token_env", "AMN_REDDIT_DEVVIT_TOKEN"))
+            parsed_endpoint = urlparse(endpoint or "")
+            if (
+                not endpoint
+                or parsed_endpoint.scheme != "https"
+                or not parsed_endpoint.hostname
+                or not parsed_endpoint.path.endswith("/external/amn/publish")
+                or not token
+                or not token.startswith("devvit_at_")
+            ):
+                results.append(
+                    _check(
+                        target_id,
+                        "credentials",
+                        False,
+                        "valid HTTPS Devvit publish endpoint or managed token missing",
+                    )
+                )
+            else:
+                results.append(
+                    _check(
+                        target_id,
+                        "bridge_configuration",
+                        True,
+                        "endpoint and managed-token format configured; live access is not verified",
                     )
                 )
 
