@@ -9,11 +9,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@devvit/web": "latest",
-    "hono": "latest"
+    "@devvit/web": "0.15.3",
+    "hono": "4.13.17"
   },
   "devDependencies": {
-    "typescript": "latest",
-    "vite": "latest"
+    "@devvit/start": "0.15.3",
+    "typescript": "5.9.3",
+    "vite": "7.3.8"
   }
 }
