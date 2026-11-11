@@ -34,6 +34,7 @@ Requires Node.js 24 and the Reddit Devvit CLI. The build uses Reddit's official 
 npm install
 npx devvit login
 npm run typecheck
+npm test
 npm run build
 npx devvit playtest
 ```
