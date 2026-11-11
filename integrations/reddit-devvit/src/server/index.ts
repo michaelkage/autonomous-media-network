@@ -302,13 +302,8 @@ app.post("/external/amn/reconcile", async (c) => {
     !input ||
     !isDeliveryId(input.delivery_id) ||
     !["published", "not_published"].includes(input.resolution) ||
-    typeof input.actor !== "string" ||
-    !input.actor.trim() ||
-    input.actor.trim().length > 100 ||
-    typeof input.note !== "string" ||
-    !input.note.trim() ||
-    input.note.trim().length > 500 ||
-    /devvit_at_|\bbearer\s/i.test(input.note)
+    !isSafeAuditText(input.actor, 100) ||
+    !isSafeAuditText(input.note, 500)
   ) {
     return c.json({ status: "error", error: "invalid_request" }, 400);
   }
