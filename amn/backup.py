@@ -6,6 +6,7 @@ import os
 import sqlite3
 import tempfile
 import time
+from contextlib import closing
 from pathlib import Path
 
 _REQUIRED_TABLES = {"jobs", "schedules"}
@@ -33,7 +34,7 @@ def verify_database(database: Path) -> Path:
     if not path.is_file():
         raise FileNotFoundError(f"database not found: {path}")
     try:
-        with sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True) as connection:
+        with closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)) as connection:
             _validate_connection(connection)
     except sqlite3.DatabaseError as exc:
         raise ValueError(f"database is unreadable: {exc}") from exc
@@ -48,7 +49,9 @@ def _atomic_database_copy(source: Path, destination: Path) -> Path:
     os.close(descriptor)
     temporary = Path(temporary_name)
     try:
-        with sqlite3.connect(source) as source_db, sqlite3.connect(temporary) as target_db:
+        with closing(sqlite3.connect(source)) as source_db, closing(
+            sqlite3.connect(temporary)
+        ) as target_db:
             source_db.backup(target_db)
             _validate_connection(target_db)
         with temporary.open("rb") as handle:
@@ -95,7 +98,9 @@ def restore_database(
 
     if destination_path.is_file():
         try:
-            with sqlite3.connect(f"{destination_path.as_uri()}?mode=ro", uri=True) as current:
+            with closing(
+                sqlite3.connect(f"{destination_path.as_uri()}?mode=ro", uri=True)
+            ) as current:
                 active = current.execute(
                     "SELECT COUNT(*) FROM jobs WHERE status = 'running' AND lease_until > ?",
                     (time.time(),),
