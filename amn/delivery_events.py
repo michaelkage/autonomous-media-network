@@ -158,7 +158,13 @@ def delivery_event_snapshot(
         "counts": {},
         "recent": [],
         "reddit_devvit_deliveries": {
-            "counts": {"published": 0, "provider_accepted": 0, "attempt_failed": 0, "retry_scheduled": 0, "attempt_started": 0},
+            "counts": {
+                "published": 0,
+                "provider_accepted": 0,
+                "attempt_failed": 0,
+                "retry_scheduled": 0,
+                "attempt_started": 0,
+            },
             "stalled": 0,
             "stale_after_seconds": stale_after_seconds,
             "recent": [],
@@ -264,7 +270,10 @@ def delivery_event_snapshot(
                 if event_type in reddit_devvit["counts"]:
                     reddit_devvit["counts"][event_type] += 1
                 age = max(0.0, now - float(row["created_at"]))
-                if event_type in {"attempt_started", "provider_accepted", "retry_scheduled"} and age >= stale_after_seconds:
+                if (
+                    event_type in {"attempt_started", "provider_accepted", "retry_scheduled"}
+                    and age >= stale_after_seconds
+                ):
                     reddit_devvit["stalled"] += 1
                 reddit_devvit["recent"].append(
                     {
