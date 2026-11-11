@@ -179,6 +179,7 @@ def test_alerts_can_run_from_the_durable_schedule_worker(tmp_path: Path, monkeyp
     assert "AMN job permanently failed" in messages[0]
     assert queue.counts()["succeeded"] == 1
 
+
 def test_stalled_queue_jobs_and_expired_leases_are_alerted(tmp_path: Path, monkeypatch) -> None:
     database = tmp_path / "build" / "jobs.sqlite3"
     queue = JobQueue(database)
@@ -245,6 +246,7 @@ def test_pending_jobs_not_yet_available_do_not_trigger_stall_alert(
     assert result["sent"] == 0
     assert calls == []
 
+
 def test_same_timestamp_alert_checks_do_not_resend_another_run_claim(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -266,4 +268,3 @@ def test_same_timestamp_alert_checks_do_not_resend_another_run_claim(
     assert first["sent"] == 1
     assert second["sent"] == 0
     assert len(calls) == 1
-
