@@ -245,3 +245,25 @@ def test_pending_jobs_not_yet_available_do_not_trigger_stall_alert(
     assert result["sent"] == 0
     assert calls == []
 
+def test_same_timestamp_alert_checks_do_not_resend_another_run_claim(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    queue = JobQueue(database)
+    job_id = queue.enqueue("publish", max_attempts=1)
+    assert queue.claim("worker") is not None
+    assert queue.fail(job_id, "worker", "provider failure", retry_delay=0)
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "amn.operator_alerts._send_telegram",
+        lambda token, chat, message, timeout: calls.append(message),
+    )
+
+    first = check_operator_alerts(database, bot_token="token", chat_id="@ops", now=1000)
+    second = check_operator_alerts(database, bot_token="token", chat_id="@ops", now=1000)
+
+    assert first["sent"] == 1
+    assert second["sent"] == 0
+    assert len(calls) == 1
+
