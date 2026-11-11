@@ -77,8 +77,8 @@ function seedUnknownDelivery(): void {
   );
 }
 
-function request(path: string, body: unknown): Promise<Response> {
-  return app.request(path, {
+async function request(path: string, body: unknown): Promise<Response> {
+  return await app.request(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
