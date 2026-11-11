@@ -35,6 +35,7 @@ function validImageUrl(value: string, allowedHosts: string[]): boolean {
     const url = new URL(value);
     return (
       url.protocol === "https:" &&
+      (url.port === "" || url.port === "443") &&
       !url.username &&
       !url.password &&
       !url.search &&
@@ -146,6 +147,7 @@ app.post("/external/amn/publish", async (c) => {
       title,
       kind: "image",
       imageUrls: [uploaded.mediaUrl],
+      runAs: "APP",
       sendreplies: true,
     });
     const postId = post.id.replace(/^t3_/, "");
