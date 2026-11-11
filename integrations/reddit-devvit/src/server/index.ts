@@ -40,6 +40,7 @@ function validImageUrl(value: string, allowedHosts: string[]): boolean {
       !url.password &&
       !url.search &&
       !url.hash &&
+      /\\.(png|jpe?g|webp)$/i.test(url.pathname) &&
       allowedHosts.includes(url.hostname.toLowerCase())
     );
   } catch {
