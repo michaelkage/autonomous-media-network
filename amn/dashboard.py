@@ -244,6 +244,18 @@ def create_app(root: Path = ROOT) -> Any:
             post_id = item.get("post_id")
             permalink = item.get("permalink")
             updated_at = item.get("updated_at")
+            reconciliation = item.get("reconciliation")
+            reconciliation_result = None
+            if isinstance(reconciliation, dict):
+                resolution = reconciliation.get("resolution")
+                resolved_at = reconciliation.get("resolved_at")
+                actor = reconciliation.get("actor")
+                if resolution in {"published", "not_published"}:
+                    reconciliation_result = {
+                        "resolution": resolution,
+                        "resolved_at": resolved_at if isinstance(resolved_at, str) else None,
+                        "actor": actor if isinstance(actor, str) else None,
+                    }
             deliveries.append(
                 {
                     "delivery_id": delivery_id,
@@ -261,6 +273,7 @@ def create_app(root: Path = ROOT) -> Any:
                         else None
                     ),
                     "updated_at": updated_at if isinstance(updated_at, str) else None,
+                    "reconciliation": reconciliation_result,
                 }
             )
         return {"configured": True, "status": "ok", "deliveries": deliveries}
