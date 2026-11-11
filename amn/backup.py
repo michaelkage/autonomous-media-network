@@ -124,9 +124,7 @@ def restore_database(
         from datetime import UTC, datetime
 
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        safety_copy = destination_path.with_name(
-            f"{destination_path.name}.pre-restore-{stamp}.bak"
-        )
+        safety_copy = destination_path.with_name(f"{destination_path.name}.pre-restore-{stamp}.bak")
         suffix = 1
         while safety_copy.exists():
             safety_copy = destination_path.with_name(
