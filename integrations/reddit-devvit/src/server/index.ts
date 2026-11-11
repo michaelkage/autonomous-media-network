@@ -1,5 +1,12 @@
 import { Hono } from "hono";
 import { media, reddit, redis, settings } from "@devvit/web/server";
+import {
+  isAllowedImageUrl,
+  isDeliveryId,
+  isSubredditName,
+  normalizePostTitle,
+  verifyPostReceipt,
+} from "./validation";
 
 type PublishRequest = {
   delivery_id: string;
@@ -30,7 +37,6 @@ type ReconciliationRecord = {
 const app = new Hono();
 const DELIVERY_HASH = "amn:reddit:deliveries";
 const RECONCILIATION_HASH = "amn:reddit:reconciliations";
-const MAX_TITLE_LENGTH = 300;
 
 function jsonRecord<T extends { status: string }>(
   value: string | null | undefined,
@@ -45,24 +51,6 @@ function jsonRecord<T extends { status: string }>(
   }
 }
 
-function validImageUrl(value: string, allowedHosts: string[]): boolean {
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      (url.port === "" || url.port === "443") &&
-      !url.username &&
-      !url.password &&
-      !url.search &&
-      !url.hash &&
-      /\.(png|jpe?g|webp)$/i.test(url.pathname) &&
-      allowedHosts.includes(url.hostname.toLowerCase())
-    );
-  } catch {
-    return false;
-  }
-}
-
 app.post("/external/amn/publish", async (c) => {
   let input: PublishRequest;
   try {
@@ -73,10 +61,8 @@ app.post("/external/amn/publish", async (c) => {
 
   if (
     !input ||
-    typeof input.delivery_id !== "string" ||
-    !/^[a-f0-9]{64}$/.test(input.delivery_id) ||
-    typeof input.subreddit !== "string" ||
-    !/^[A-Za-z0-9_]{2,21}$/.test(input.subreddit) ||
+    !isDeliveryId(input.delivery_id) ||
+    !isSubredditName(input.subreddit) ||
     typeof input.title !== "string" ||
     !input.title.trim() ||
     typeof input.image_url !== "string"
@@ -96,11 +82,11 @@ app.post("/external/amn/publish", async (c) => {
     .split(",")
     .map((host) => host.trim().toLowerCase())
     .filter(Boolean);
-  if (!allowedHosts.length || !validImageUrl(input.image_url, allowedHosts)) {
+  if (!allowedHosts.length || !isAllowedImageUrl(input.image_url, allowedHosts)) {
     return c.json({ status: "error", error: "media_host_not_allowed" }, 403);
   }
 
-  const title = input.title.trim().replace(/\s+/g, " ").slice(0, MAX_TITLE_LENGTH);
+  const title = normalizePostTitle(input.title, "");
   const currentRaw = await redis.hGet(DELIVERY_HASH, input.delivery_id);
   const current = jsonRecord(currentRaw);
   if (current?.status === "published" && current.post_id) {
@@ -304,8 +290,7 @@ app.post("/external/amn/reconcile", async (c) => {
   }
   if (
     !input ||
-    typeof input.delivery_id !== "string" ||
-    !/^[a-f0-9]{64}$/.test(input.delivery_id) ||
+    !isDeliveryId(input.delivery_id) ||
     !["published", "not_published"].includes(input.resolution) ||
     typeof input.actor !== "string" ||
     !input.actor.trim() ||
@@ -344,33 +329,18 @@ app.post("/external/amn/reconcile", async (c) => {
     return c.json({ status: "reset", delivery_id: input.delivery_id });
   }
 
-  const normalizedPostId =
-    typeof input.post_id === "string" ? input.post_id.replace(/^t3_/, "") : "";
-  const permalinkMatch =
-    typeof input.permalink === "string"
-      ? /^\/r\/([A-Za-z0-9_]+)\/comments\/([A-Za-z0-9]+)(?:\/|$)/i.exec(input.permalink)
-      : null;
-  if (
-    !/^[A-Za-z0-9]+$/.test(normalizedPostId) ||
-    !permalinkMatch ||
-    permalinkMatch[2] !== normalizedPostId
-  ) {
-    return c.json({ status: "error", error: "valid_post_receipt_required" }, 400);
-  }
   const allowedSubreddit = await settings.get("allowedSubreddit");
-  if (
-    !allowedSubreddit ||
-    permalinkMatch[1].toLowerCase() !== allowedSubreddit.toLowerCase()
-  ) {
-    return c.json({ status: "error", error: "post_receipt_subreddit_mismatch" }, 400);
+  const receipt = verifyPostReceipt(input.post_id, input.permalink, allowedSubreddit ?? "");
+  if (!receipt) {
+    return c.json({ status: "error", error: "valid_post_receipt_required" }, 400);
   }
   await redis.hSet(RECONCILIATION_HASH, {
     [input.delivery_id]: JSON.stringify(resolutionAudit),
   });
   const resolved: DeliveryRecord = {
     status: "published",
-    post_id: normalizedPostId,
-    permalink: input.permalink,
+    post_id: receipt.postId,
+    permalink: receipt.permalink,
     updated_at: resolvedAt,
     resolution: "published",
     resolved_at: resolvedAt,
