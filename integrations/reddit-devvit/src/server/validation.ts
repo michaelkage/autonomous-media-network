@@ -27,6 +27,12 @@ export function isSafeAuditText(value: unknown, maxLength: number): value is str
   );
 }
 
+export function isReconciliationEligible(status: unknown): status is "unknown" {
+  // Only "unknown" is persisted after submitPost and recovery lookup have
+  // completed. Resetting "uploading" or "submitting" can race a live request.
+  return status === "unknown";
+}
+
 export function normalizePostTitle(value: string, fallback: string): string {
   const title = value.trim().replace(/\s+/g, " ").slice(0, 300);
   return title || fallback.slice(0, 300);
