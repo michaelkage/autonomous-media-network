@@ -90,3 +90,18 @@ def test_backup_cli_and_restore_cli(tmp_path: Path, capsys) -> None:
     assert "backup created" in capsys.readouterr().out
     assert main(["jobs", "verify-backup", "--input", str(backup), "--root", str(root)]) == 0
     assert "backup verified" in capsys.readouterr().out
+    assert (
+        main(
+            [
+                "jobs",
+                "restore",
+                "--input",
+                str(backup),
+                "--confirm-no-workers",
+                "--root",
+                str(root),
+            ]
+        )
+        == 0
+    )
+    assert "pre-restore safety copy" in capsys.readouterr().out
