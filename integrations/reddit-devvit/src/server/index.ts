@@ -320,6 +320,18 @@ app.post("/external/amn/reconcile", async (c) => {
     return c.json({ status: "error", error: "delivery_still_active" }, 409);
   }
 
+  const receipt =
+    input.resolution === "published"
+      ? verifyPostReceipt(
+          input.post_id,
+          input.permalink,
+          settingText(await settings.get("allowedSubreddit")) ?? "",
+        )
+      : null;
+  if (input.resolution === "published" && !receipt) {
+    return c.json({ status: "error", error: "valid_post_receipt_required" }, 400);
+  }
+
   const resolvedAt = new Date().toISOString();
   const resolutionAudit: ReconciliationRecord = {
     status: input.resolution,
@@ -350,11 +362,6 @@ app.post("/external/amn/reconcile", async (c) => {
     return c.json({ status: "reset", delivery_id: input.delivery_id });
   }
 
-  const allowedSubreddit = settingText(await settings.get("allowedSubreddit"));
-  const receipt = verifyPostReceipt(input.post_id, input.permalink, allowedSubreddit ?? "");
-  if (!receipt) {
-    return c.json({ status: "error", error: "valid_post_receipt_required" }, 400);
-  }
   await redis.hSet(RECONCILIATION_HASH, {
     [input.delivery_id]: JSON.stringify(resolutionAudit),
   });
