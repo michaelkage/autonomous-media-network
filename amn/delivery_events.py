@@ -42,8 +42,7 @@ def reddit_devvit_delivery_ids(database: Path, limit: int = 25) -> list[str]:
         return []
     with closing(_connect(database)) as db:
         table = db.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
-            "AND name = 'delivery_events'"
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'delivery_events'"
         ).fetchone()
         if table is None:
             return []
@@ -243,9 +242,7 @@ def delivery_event_snapshot(
         reddit_devvit = empty["reddit_devvit_deliveries"].copy()
         if table is not None:
             reddit_receipt_column = (
-                "provider_message_id"
-                if "provider_message_id" in event_columns
-                else "NULL"
+                "provider_message_id" if "provider_message_id" in event_columns else "NULL"
             )
             latest_reddit_rows = db.execute(
                 f"""
