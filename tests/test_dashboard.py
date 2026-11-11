@@ -424,6 +424,11 @@ def test_dashboard_fetches_authenticated_reddit_provider_state(
                 "post_id": "provider123",
                 "permalink": "/r/earthporn/comments/provider123/title/",
                 "updated_at": "2026-11-11T09:00:00.000Z",
+                "reconciliation": {
+                    "resolution": "published",
+                    "resolved_at": "2026-11-11T09:01:00.000Z",
+                    "actor": "operator@example",
+                },
             }
         ],
     }
