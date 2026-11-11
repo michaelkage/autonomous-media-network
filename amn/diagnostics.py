@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, urlsplit
 
 import requests
 
@@ -321,32 +321,77 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
         elif platform == "reddit_devvit":
             endpoint = os.environ.get(target.get("bridge_url_env", "AMN_REDDIT_DEVVIT_URL"))
             token = os.environ.get(target.get("bridge_token_env", "AMN_REDDIT_DEVVIT_TOKEN"))
-            parsed_endpoint = urlparse(endpoint or "")
+            try:
+                parsed_endpoint = urlsplit(endpoint or "")
+                valid_port = parsed_endpoint.port in (None, 443)
+            except ValueError:
+                parsed_endpoint = urlsplit("")
+                valid_port = False
+            valid_endpoint = (
+                parsed_endpoint.scheme == "https"
+                and bool(parsed_endpoint.hostname)
+                and parsed_endpoint.hostname.lower().endswith(".devvit.net")
+                and not parsed_endpoint.username
+                and not parsed_endpoint.password
+                and not parsed_endpoint.query
+                and not parsed_endpoint.fragment
+                and valid_port
+                and parsed_endpoint.path.endswith("/external/amn/publish")
+            )
             if (
-                not endpoint
-                or parsed_endpoint.scheme != "https"
-                or not parsed_endpoint.hostname
-                or not parsed_endpoint.path.endswith("/external/amn/publish")
+                not valid_endpoint
                 or not token
                 or not token.startswith("devvit_at_")
+                or any(character.isspace() for character in token)
             ):
                 results.append(
                     _check(
                         target_id,
                         "credentials",
                         False,
-                        "valid HTTPS Devvit publish endpoint or managed token missing",
+                        "valid Devvit HTTPS endpoint and managed token are required",
                     )
                 )
             else:
-                results.append(
-                    _check(
-                        target_id,
-                        "bridge_configuration",
-                        True,
-                        "endpoint and managed-token format configured; live access is not verified",
+                status_url = parsed_endpoint._replace(
+                    path=parsed_endpoint.path.removesuffix("/publish") + "/status"
+                ).geturl()
+                try:
+                    response = client.post(
+                        status_url,
+                        headers={
+                            "Authorization": f"bearer {token}",
+                            "Accept": "application/json",
+                            "Content-Type": "application/json",
+                        },
+                        json={"delivery_ids": []},
+                        timeout=10,
                     )
-                )
+                    response.raise_for_status()
+                    payload = response.json()
+                    if (
+                        not isinstance(payload, dict)
+                        or payload.get("status") != "ok"
+                        or payload.get("deliveries") != []
+                    ):
+                        raise ValueError("Devvit status response was invalid")
+                    results.append(
+                        _check(
+                            target_id,
+                            "bridge_access",
+                            True,
+                            "Devvit endpoint authenticated and status API responded",
+                        )
+                    )
+                except (requests.RequestException, ValueError, TypeError, AttributeError):
+                    results.append(
+                        _check(
+                            target_id,
+                            "bridge_access",
+                            False,
+                            "Devvit endpoint authentication or status check failed",
+                        )
+                    )
 
         elif platform == "bluesky":
             handle = os.environ.get(target.get("handle_env", "BLUESKY_HANDLE"))
