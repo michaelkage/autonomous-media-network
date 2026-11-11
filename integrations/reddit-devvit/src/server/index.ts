@@ -9,7 +9,7 @@ type PublishRequest = {
 };
 
 type DeliveryRecord = {
-  status: "processing" | "published" | "unknown";
+  status: "uploading" | "submitting" | "published" | "unknown";
   post_id?: string;
   permalink?: string;
   updated_at: string;
@@ -101,7 +101,7 @@ app.post("/external/amn/publish", async (c) => {
   }
 
   const record: DeliveryRecord = {
-    status: "processing",
+    status: "uploading",
     updated_at: new Date().toISOString(),
   };
   const reserved = await redis.hSetNX(
@@ -132,6 +132,13 @@ app.post("/external/amn/publish", async (c) => {
     await redis.hDel(DELIVERY_HASH, [input.delivery_id]);
     return c.json({ status: "error", error: "media_upload_failed" }, 502);
   }
+
+  await redis.hSet(DELIVERY_HASH, {
+    [input.delivery_id]: JSON.stringify({
+      status: "submitting",
+      updated_at: new Date().toISOString(),
+    } satisfies DeliveryRecord),
+  });
 
   try {
     const post = await reddit.submitPost({
@@ -200,6 +207,10 @@ app.post("/external/amn/reconcile", async (c) => {
   const existing = jsonRecord(await redis.hGet(DELIVERY_HASH, input.delivery_id));
   if (!existing || existing.status === "published") {
     return c.json({ status: "error", error: "delivery_not_reconcilable" }, 409);
+  }
+  const updatedAt = Date.parse(existing.updated_at);
+  if (!Number.isFinite(updatedAt) || Date.now() - updatedAt < 120_000) {
+    return c.json({ status: "error", error: "delivery_still_active" }, 409);
   }
 
   if (input.resolution === "not_published") {
