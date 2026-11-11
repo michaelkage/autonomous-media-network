@@ -55,3 +55,4 @@ The bridge posts as the Devvit app account. It does not publish as the Reddit us
 - Atomic Redis reservation and fail-closed duplicate handling.
 - No captions, access tokens, or remote request bodies are written to application logs.
 - No automatic retry after a submission may have reached Reddit.
+- Reddit's current media API does not expose a delete operation for uploaded assets. A failed or ambiguous submission can therefore leave an unused Reddit-hosted media asset behind.
