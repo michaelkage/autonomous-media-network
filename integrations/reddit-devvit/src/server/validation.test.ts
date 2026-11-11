@@ -6,6 +6,7 @@ import {
   isReconciliationEligible,
   isSafeAuditText,
   isSubredditName,
+  matchesReconciliationIntent,
   normalizePostTitle,
   verifyPostReceipt,
 } from "./validation";
@@ -43,6 +44,44 @@ describe("Devvit request validation", () => {
     expect(isReconciliationEligible("published")).toBe(false);
     expect(isReconciliationEligible("not_found")).toBe(false);
     expect(isReconciliationEligible(undefined)).toBe(false);
+  });
+
+  it("allows only one immutable reconciliation decision per delivery", () => {
+    const claim = {
+      status: "published",
+      resolution: "published",
+      actor: "operator@example.com",
+      note: "Verified in subreddit",
+      post_id: "abc123",
+      permalink: "/r/earthporn/comments/abc123/",
+      resolved_at: "2026-11-11T12:00:00.000Z",
+    };
+    expect(matchesReconciliationIntent(claim, {
+      resolution: "published",
+      actor: "operator@example.com",
+      note: "Verified in subreddit",
+      post_id: "abc123",
+      permalink: "/r/earthporn/comments/abc123/",
+    })).toBe(true);
+    expect(matchesReconciliationIntent(claim, {
+      resolution: "not_published",
+      actor: "operator@example.com",
+      note: "Verified in subreddit",
+    })).toBe(false);
+    expect(matchesReconciliationIntent(claim, {
+      resolution: "published",
+      actor: "another-operator",
+      note: "Verified in subreddit",
+      post_id: "abc123",
+      permalink: "/r/earthporn/comments/abc123/",
+    })).toBe(false);
+    expect(matchesReconciliationIntent({ ...claim, resolved_at: "invalid" }, {
+      resolution: "published",
+      actor: "operator@example.com",
+      note: "Verified in subreddit",
+      post_id: "abc123",
+      permalink: "/r/earthporn/comments/abc123/",
+    })).toBe(false);
   });
 
   it("normalizes title whitespace and applies the Reddit title limit", () => {
