@@ -127,7 +127,9 @@ class RedditDevvitPublisher(Publisher):
                     # A previous request may have reached Reddit. Do not create a
                     # second post while the provider-side result is ambiguous.
                     self.retry_after = max(self.retry_after or 0, 3600)
-                    raise RuntimeError("Devvit delivery is unresolved; automatic resubmission blocked")
+                    raise RuntimeError(
+                        "Devvit delivery is unresolved; automatic resubmission blocked"
+                    )
                 raise RuntimeError("Devvit bridge did not confirm publication")
 
             post_id = body.get("post_id")
