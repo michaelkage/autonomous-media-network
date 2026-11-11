@@ -94,7 +94,9 @@ app.post("/external/amn/publish", async (c) => {
       duplicate: true,
     });
   }
-  if (current && current.status !== "failed") {
+  if (current) {
+    // Existing failed or ambiguous records require an operator reset. This
+    // intentionally favors duplicate prevention over automatic recovery.
     return c.json({ status: "reconciliation_required" }, 409);
   }
 
@@ -102,28 +104,22 @@ app.post("/external/amn/publish", async (c) => {
     status: "processing",
     updated_at: new Date().toISOString(),
   };
-  if (current) {
-    // A previous failure is only retryable because it is written before any
-    // Reddit submission call. An ambiguous submit is always recorded as unknown.
-    await redis.hSet(DELIVERY_HASH, { [input.delivery_id]: JSON.stringify(record) });
-  } else {
-    const reserved = await redis.hSetNX(
-      DELIVERY_HASH,
-      input.delivery_id,
-      JSON.stringify(record),
-    );
-    if (!reserved) {
-      const raced = jsonRecord(await redis.hGet(DELIVERY_HASH, input.delivery_id));
-      if (raced?.status === "published" && raced.post_id) {
-        return c.json({
-          status: "published",
-          post_id: raced.post_id,
-          permalink: raced.permalink,
-          duplicate: true,
-        });
-      }
-      return c.json({ status: "reconciliation_required" }, 409);
+  const reserved = await redis.hSetNX(
+    DELIVERY_HASH,
+    input.delivery_id,
+    JSON.stringify(record),
+  );
+  if (!reserved) {
+    const raced = jsonRecord(await redis.hGet(DELIVERY_HASH, input.delivery_id));
+    if (raced?.status === "published" && raced.post_id) {
+      return c.json({
+        status: "published",
+        post_id: raced.post_id,
+        permalink: raced.permalink,
+        duplicate: true,
+      });
     }
+    return c.json({ status: "reconciliation_required" }, 409);
   }
 
   let uploaded: { mediaId: string; mediaUrl: string };
