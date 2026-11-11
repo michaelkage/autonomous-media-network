@@ -119,7 +119,11 @@ class RedditDevvitPublisher(Publisher):
                 raise RuntimeError("Devvit bridge returned an invalid response")
             if body.get("status") != "published":
                 status = body.get("status")
-                if status in {"processing", "unknown", "reconciliation_required"}:
+                if isinstance(status, str) and status in {
+                    "processing",
+                    "unknown",
+                    "reconciliation_required",
+                }:
                     # A previous request may have reached Reddit. Do not create a
                     # second post while the provider-side result is ambiguous.
                     self.retry_after = max(self.retry_after or 0, 3600)
