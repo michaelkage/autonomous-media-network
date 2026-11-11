@@ -84,7 +84,8 @@ class RedditDevvitPublisher(Publisher):
             image_path = Path(image_path)
             if not image_path.is_file():
                 raise FileNotFoundError("Reddit media asset is missing")
-            if not self.delivery_id or not re.fullmatch(r"[a-f0-9]{64}", self.delivery_id):
+            delivery_id = getattr(self, "_amn_delivery_id", self.delivery_id)
+            if not delivery_id or not re.fullmatch(r"[a-f0-9]{64}", delivery_id):
                 raise ValueError("AMN delivery identity is required for Devvit publishing")
 
             title = " ".join(caption.split())[:_MAX_TITLE_LENGTH].strip()
@@ -92,7 +93,7 @@ class RedditDevvitPublisher(Publisher):
                 title = image_path.stem[:_MAX_TITLE_LENGTH]
             image_url = f"{self.public_base_url}/{quote(image_path.name)}"
             payload = {
-                "delivery_id": self.delivery_id,
+                "delivery_id": delivery_id,
                 "subreddit": self.subreddit,
                 "title": title,
                 "image_url": image_url,
