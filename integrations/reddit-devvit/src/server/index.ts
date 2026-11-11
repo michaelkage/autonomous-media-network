@@ -6,6 +6,7 @@ import {
   isReconciliationEligible,
   isSafeAuditText,
   isSubredditName,
+  matchesReconciliationIntent,
   normalizePostTitle,
   verifyPostReceipt,
 } from "./validation";
@@ -34,7 +35,11 @@ type ReconciliationRecord = {
   resolved_at: string;
   actor: string;
   note: string;
+  post_id?: string;
+  permalink?: string;
 };
+
+type ReconciliationClaim = ReconciliationRecord;
 
 const app = new Hono();
 
@@ -45,6 +50,7 @@ function settingText(value: unknown): string | null {
 const DELIVERY_HASH = "amn:reddit:deliveries";
 const RECONCILIATION_HASH = "amn:reddit:reconciliations";
 const RECONCILIATION_AUDIT_HASH = "amn:reddit:reconciliation_audit";
+const RECONCILIATION_CLAIMS_HASH = "amn:reddit:reconciliation_claims";
 
 function jsonRecord<T extends { status: string }>(
   value: string | null | undefined,
@@ -305,17 +311,6 @@ app.post("/external/amn/reconcile", async (c) => {
     return c.json({ status: "error", error: "invalid_request" }, 400);
   }
 
-  const existing = jsonRecord<DeliveryRecord>(
-    await redis.hGet(DELIVERY_HASH, input.delivery_id),
-  );
-  if (!existing || !isReconciliationEligible(existing.status)) {
-    return c.json({ status: "error", error: "delivery_not_reconcilable" }, 409);
-  }
-  const updatedAt = Date.parse(existing.updated_at);
-  if (!Number.isFinite(updatedAt) || Date.now() - updatedAt < 120_000) {
-    return c.json({ status: "error", error: "delivery_still_active" }, 409);
-  }
-
   const receipt =
     input.resolution === "published"
       ? verifyPostReceipt(
@@ -328,54 +323,96 @@ app.post("/external/amn/reconcile", async (c) => {
     return c.json({ status: "error", error: "valid_post_receipt_required" }, 400);
   }
 
-  const resolvedAt = new Date().toISOString();
-  const resolutionAudit: ReconciliationRecord = {
-    status: input.resolution,
+  const requestedIntent = {
     resolution: input.resolution,
-    resolved_at: resolvedAt,
     actor: input.actor.trim(),
     note: input.note.trim(),
+    ...(receipt
+      ? { post_id: receipt.postId, permalink: receipt.permalink }
+      : {}),
   };
-  const auditEntryId = [
-    input.delivery_id,
-    resolvedAt,
-    crypto.randomUUID(),
-  ].join(":");
-  const auditRecorded = await redis.hSetNX(
+  let claim = jsonRecord<ReconciliationClaim>(
+    await redis.hGet(RECONCILIATION_CLAIMS_HASH, input.delivery_id),
+  );
+
+  if (claim && !matchesReconciliationIntent(claim, requestedIntent)) {
+    return c.json({ status: "error", error: "reconciliation_already_claimed" }, 409);
+  }
+
+  if (!claim) {
+    const existing = jsonRecord<DeliveryRecord>(
+      await redis.hGet(DELIVERY_HASH, input.delivery_id),
+    );
+    if (!existing || !isReconciliationEligible(existing.status)) {
+      return c.json({ status: "error", error: "delivery_not_reconcilable" }, 409);
+    }
+    const updatedAt = Date.parse(existing.updated_at);
+    if (!Number.isFinite(updatedAt) || Date.now() - updatedAt < 120_000) {
+      return c.json({ status: "error", error: "delivery_still_active" }, 409);
+    }
+
+    const proposedClaim: ReconciliationClaim = {
+      status: input.resolution,
+      resolution: input.resolution,
+      resolved_at: new Date().toISOString(),
+      actor: requestedIntent.actor,
+      note: requestedIntent.note,
+      ...(receipt
+        ? { post_id: receipt.postId, permalink: receipt.permalink }
+        : {}),
+    };
+    const claimed = await redis.hSetNX(
+      RECONCILIATION_CLAIMS_HASH,
+      input.delivery_id,
+      JSON.stringify(proposedClaim),
+    );
+    claim = claimed
+      ? proposedClaim
+      : jsonRecord<ReconciliationClaim>(
+          await redis.hGet(RECONCILIATION_CLAIMS_HASH, input.delivery_id),
+        );
+
+    if (!claim || !matchesReconciliationIntent(claim, requestedIntent)) {
+      return c.json({ status: "error", error: "reconciliation_already_claimed" }, 409);
+    }
+  }
+
+  // The claim is a durable, immutable decision intent. Retrying the same
+  // request resumes this sequence after a crash; a conflicting decision
+  // cannot win even when two operators reconcile concurrently.
+  const resolutionAudit: ReconciliationRecord = claim;
+  const auditEntryId = [input.delivery_id, claim.resolved_at].join(":");
+  await redis.hSetNX(
     RECONCILIATION_AUDIT_HASH,
     auditEntryId,
     JSON.stringify(resolutionAudit),
   );
-  if (!auditRecorded) {
-    return c.json({ status: "error", error: "audit_record_conflict" }, 503);
-  }
 
-  if (input.resolution === "not_published") {
-    await redis.hSet(RECONCILIATION_HASH, {
-      [input.delivery_id]: JSON.stringify(resolutionAudit),
-    });
+  await redis.hSet(RECONCILIATION_HASH, {
+    [input.delivery_id]: JSON.stringify(resolutionAudit),
+  });
+
+  if (claim.resolution === "not_published") {
     await redis.hDel(DELIVERY_HASH, [input.delivery_id]);
     return c.json({ status: "reset", delivery_id: input.delivery_id });
   }
 
-  if (!receipt) {
-    return c.json({ status: "error", error: "valid_post_receipt_required" }, 400);
-  }
-  await redis.hSet(RECONCILIATION_HASH, {
-    [input.delivery_id]: JSON.stringify(resolutionAudit),
-  });
   const resolved: DeliveryRecord = {
     status: "published",
-    post_id: receipt.postId,
-    permalink: receipt.permalink,
-    updated_at: resolvedAt,
+    post_id: claim.post_id!,
+    permalink: claim.permalink!,
+    updated_at: claim.resolved_at,
     resolution: "published",
-    resolved_at: resolvedAt,
-    resolution_actor: input.actor.trim(),
-    resolution_note: input.note.trim(),
+    resolved_at: claim.resolved_at,
+    resolution_actor: claim.actor,
+    resolution_note: claim.note,
   };
   await redis.hSet(DELIVERY_HASH, { [input.delivery_id]: JSON.stringify(resolved) });
-  return c.json({ status: "published", post_id: resolved.post_id, permalink: resolved.permalink });
+  return c.json({
+    status: "published",
+    post_id: resolved.post_id,
+    permalink: resolved.permalink,
+  });
 });
 
 export default app;
