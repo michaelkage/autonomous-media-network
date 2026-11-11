@@ -5,7 +5,7 @@ export default defineConfig({
     lib: {
       entry: "src/server/index.ts",
       formats: ["cjs"],
-      fileName: () => "index.js",
+      fileName: () => "index.cjs",
     },
     outDir: "dist/server",
     emptyOutDir: true,
