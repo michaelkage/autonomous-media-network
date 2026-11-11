@@ -7,7 +7,15 @@
     "externalEndpoints": {
       "amnPublish": {
         "endpoint": "/external/amn/publish",
-        "scopes": ["global"]
+        "scopes": [
+          "global"
+        ]
+      },
+      "amnReconcile": {
+        "endpoint": "/external/amn/reconcile",
+        "scopes": [
+          "global"
+        ]
       }
     }
   },
