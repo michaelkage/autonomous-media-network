@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlparse, urlsplit
+from urllib.parse import quote, urlsplit
 
 import requests
 
