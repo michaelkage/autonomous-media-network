@@ -218,6 +218,49 @@ app.post("/external/amn/publish", async (c) => {
 });
 
 
+
+type StatusRequest = {
+  delivery_ids: string[];
+};
+
+app.post("/external/amn/status", async (c) => {
+  let input: StatusRequest;
+  try {
+    input = await c.req.json<StatusRequest>();
+  } catch {
+    return c.json({ status: "error", error: "invalid_json" }, 400);
+  }
+  if (
+    !input ||
+    !Array.isArray(input.delivery_ids) ||
+    input.delivery_ids.length > 50 ||
+    input.delivery_ids.some(
+      (deliveryId) =>
+        typeof deliveryId !== "string" || !/^[a-f0-9]{64}$/.test(deliveryId),
+    )
+  ) {
+    return c.json({ status: "error", error: "invalid_request" }, 400);
+  }
+
+  const uniqueIds = [...new Set(input.delivery_ids)];
+  const records = await Promise.all(
+    uniqueIds.map(async (deliveryId) => ({
+      delivery_id: deliveryId,
+      record: jsonRecord(await redis.hGet(DELIVERY_HASH, deliveryId)),
+    })),
+  );
+  return c.json({
+    status: "ok",
+    deliveries: records.map(({ delivery_id, record }) => ({
+      delivery_id,
+      status: record?.status ?? "not_found",
+      post_id: record?.post_id ?? null,
+      permalink: record?.permalink ?? null,
+      updated_at: record?.updated_at ?? null,
+    })),
+  });
+});
+
 type ReconcileRequest = {
   delivery_id: string;
   resolution: "published" | "not_published";
