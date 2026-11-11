@@ -22,7 +22,9 @@
   "permissions": {
     "media": true,
     "redis": true,
-    "reddit": true
+    "reddit": {
+      "enable": true
+    }
   },
   "settings": {
     "global": {
