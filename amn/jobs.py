@@ -223,9 +223,9 @@ class JobQueue:
             changed = db.execute(
                 """
                 UPDATE jobs SET lease_until = ?, updated_at = ?
-                WHERE id = ? AND status = 'running' AND worker_id = ?
+                WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_until > ?
                 """,
-                (now + lease_seconds, now, job_id, worker_id),
+                (now + lease_seconds, now, job_id, worker_id, now),
             ).rowcount
         return changed == 1
 
@@ -237,9 +237,9 @@ class JobQueue:
                 UPDATE jobs
                 SET status = 'succeeded', worker_id = NULL, locked_at = NULL,
                     lease_until = NULL, last_error = NULL, updated_at = ?
-                WHERE id = ? AND status = 'running' AND worker_id = ?
+                WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_until > ?
                 """,
-                (now, job_id, worker_id),
+                (now, job_id, worker_id, now),
             ).rowcount
         return changed == 1
 
@@ -270,9 +270,9 @@ class JobQueue:
             row = db.execute(
                 """
                 SELECT attempts, max_attempts FROM jobs
-                WHERE id = ? AND status = 'running' AND worker_id = ?
+                WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_until > ?
                 """,
-                (job_id, worker_id),
+                (job_id, worker_id, now),
             ).fetchone()
             if row is None:
                 db.rollback()
@@ -289,7 +289,7 @@ class JobQueue:
                 SET status = ?, available_at = ?, worker_id = NULL,
                     locked_at = NULL, lease_until = NULL, last_error = ?,
                     updated_at = ?
-                WHERE id = ? AND status = 'running' AND worker_id = ?
+                WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_until > ?
                 """,
                 (
                     "failed" if terminal else "pending",
@@ -298,6 +298,7 @@ class JobQueue:
                     now,
                     job_id,
                     worker_id,
+                    now,
                 ),
             ).rowcount
             db.commit()
