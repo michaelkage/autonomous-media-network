@@ -28,7 +28,7 @@ Each subreddit installation has its own Redis namespace. Configure AMN to call t
 
 ## Build and playtest
 
-Requires Node.js 24 and the Reddit Devvit CLI.
+Requires Node.js 24 and the Reddit Devvit CLI. The build uses Reddit's official `@devvit/start/vite` plugin and pins the Devvit runtime/toolchain versions.
 
 ```bash
 npm install
