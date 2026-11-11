@@ -250,7 +250,7 @@ def create_app(root: Path = ROOT) -> Any:
                 resolution = reconciliation.get("resolution")
                 resolved_at = reconciliation.get("resolved_at")
                 actor = reconciliation.get("actor")
-                if resolution in {"published", "not_published"}:
+                if resolution == "published" or resolution == "not_published":
                     reconciliation_result = {
                         "resolution": resolution,
                         "resolved_at": resolved_at if isinstance(resolved_at, str) else None,
