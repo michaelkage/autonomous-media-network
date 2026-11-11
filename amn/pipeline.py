@@ -421,6 +421,21 @@ def main(argv: list[str] | None = None) -> int:
     schedule_tick.add_argument("--limit", type=int, default=100)
     schedule_tick.add_argument("--root", type=Path, default=Path.cwd())
 
+    backup = job_commands.add_parser("backup", help="create a consistent SQLite queue backup")
+    backup.add_argument("--output", type=Path, required=True)
+    backup.add_argument("--root", type=Path, default=Path.cwd())
+    verify_backup = job_commands.add_parser("verify-backup", help="validate a queue backup")
+    verify_backup.add_argument("--input", type=Path, required=True)
+    verify_backup.add_argument("--root", type=Path, default=Path.cwd())
+    restore = job_commands.add_parser("restore", help="restore queue state from a verified backup")
+    restore.add_argument("--input", type=Path, required=True)
+    restore.add_argument(
+        "--confirm-no-workers",
+        action="store_true",
+        help="confirm all AMN workers and scheduler processes are stopped",
+    )
+    restore.add_argument("--root", type=Path, default=Path.cwd())
+
     alerts = sub.add_parser(
         "alerts", help="inspect incidents and send deduplicated operator alerts"
     )
@@ -507,6 +522,30 @@ def main(argv: list[str] | None = None) -> int:
         from .jobs import JobQueue
 
         queue = JobQueue(args.root / BUILD_DIR / "jobs.sqlite3")
+        if args.jobs_command in {"backup", "verify-backup", "restore"}:
+            from .backup import backup_database, restore_database, verify_database
+
+            database = args.root / BUILD_DIR / "jobs.sqlite3"
+            try:
+                if args.jobs_command == "backup":
+                    destination = backup_database(database, args.output)
+                    print(f"queue backup created: {destination}")
+                elif args.jobs_command == "verify-backup":
+                    verified = verify_database(args.input)
+                    print(f"queue backup verified: {verified}")
+                else:
+                    restored, safety_copy = restore_database(
+                        args.input,
+                        database,
+                        confirm_no_workers=args.confirm_no_workers,
+                    )
+                    print(f"queue database restored: {restored}")
+                    if safety_copy is not None:
+                        print(f"pre-restore safety copy: {safety_copy}")
+            except (OSError, ValueError) as exc:
+                print(f"queue backup operation failed: {exc}", file=sys.stderr)
+                return 1
+            return 0
         if args.jobs_command == "schedule":
             if args.schedule_command == "add":
                 if args.every_seconds <= 0:
