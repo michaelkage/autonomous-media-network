@@ -35,6 +35,11 @@ type ReconciliationRecord = {
 };
 
 const app = new Hono();
+
+function settingText(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
 const DELIVERY_HASH = "amn:reddit:deliveries";
 const RECONCILIATION_HASH = "amn:reddit:reconciliations";
 
@@ -70,17 +75,19 @@ app.post("/external/amn/publish", async (c) => {
     return c.json({ status: "error", error: "invalid_request" }, 400);
   }
 
-  const [allowedSubreddit, allowedMediaHostsRaw] = await Promise.all([
+  const [allowedSubredditSetting, allowedMediaHostsSetting] = await Promise.all([
     settings.get("allowedSubreddit"),
     settings.get("allowedMediaHosts"),
   ]);
+  const allowedSubreddit = settingText(allowedSubredditSetting);
+  const allowedMediaHosts = settingText(allowedMediaHostsSetting);
   if (!allowedSubreddit || input.subreddit.toLowerCase() !== allowedSubreddit.toLowerCase()) {
     return c.json({ status: "error", error: "subreddit_not_allowed" }, 403);
   }
 
-  const allowedHosts = (allowedMediaHostsRaw ?? "")
+  const allowedHosts = (allowedMediaHosts ?? "")
     .split(",")
-    .map((host) => host.trim().toLowerCase())
+    .map((host: string) => host.trim().toLowerCase())
     .filter(Boolean);
   if (!allowedHosts.length || !isAllowedImageUrl(input.image_url, allowedHosts)) {
     return c.json({ status: "error", error: "media_host_not_allowed" }, 403);
@@ -88,7 +95,7 @@ app.post("/external/amn/publish", async (c) => {
 
   const title = normalizePostTitle(input.title, "");
   const currentRaw = await redis.hGet(DELIVERY_HASH, input.delivery_id);
-  const current = jsonRecord(currentRaw);
+  const current = jsonRecord<DeliveryRecord>(currentRaw);
   if (current?.status === "published" && current.post_id) {
     return c.json({
       status: "published",
@@ -113,7 +120,9 @@ app.post("/external/amn/publish", async (c) => {
     JSON.stringify(record),
   );
   if (!reserved) {
-    const raced = jsonRecord(await redis.hGet(DELIVERY_HASH, input.delivery_id));
+    const raced = jsonRecord<DeliveryRecord>(
+      await redis.hGet(DELIVERY_HASH, input.delivery_id),
+    );
     if (raced?.status === "published" && raced.post_id) {
       return c.json({
         status: "published",
@@ -303,7 +312,9 @@ app.post("/external/amn/reconcile", async (c) => {
     return c.json({ status: "error", error: "invalid_request" }, 400);
   }
 
-  const existing = jsonRecord(await redis.hGet(DELIVERY_HASH, input.delivery_id));
+  const existing = jsonRecord<DeliveryRecord>(
+    await redis.hGet(DELIVERY_HASH, input.delivery_id),
+  );
   if (!existing || existing.status === "published") {
     return c.json({ status: "error", error: "delivery_not_reconcilable" }, 409);
   }
@@ -329,7 +340,7 @@ app.post("/external/amn/reconcile", async (c) => {
     return c.json({ status: "reset", delivery_id: input.delivery_id });
   }
 
-  const allowedSubreddit = await settings.get("allowedSubreddit");
+  const allowedSubreddit = settingText(await settings.get("allowedSubreddit"));
   const receipt = verifyPostReceipt(input.post_id, input.permalink, allowedSubreddit ?? "");
   if (!receipt) {
     return c.json({ status: "error", error: "valid_post_receipt_required" }, 400);
