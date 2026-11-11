@@ -201,3 +201,28 @@ def test_reddit_target_requires_valid_subreddit_and_https_media() -> None:
     }
     with pytest.raises(ValueError, match="HTTPS"):
         validate_config(invalid_url)
+
+
+def test_reddit_devvit_target_requires_subreddit_and_https_media() -> None:
+    valid = {
+        "targets": [
+            {
+                "id": "reddit-devvit",
+                "platform": "reddit_devvit",
+                "enabled": True,
+                "subreddit": "earthporn",
+                "public_base_url": "https://cdn.example.com/outbox",
+                "bridge_url_env": "AMN_REDDIT_DEVVIT_URL",
+                "bridge_token_env": "AMN_REDDIT_DEVVIT_TOKEN",
+            }
+        ],
+        "routes": {"landscape": ["reddit-devvit"]},
+    }
+    assert validate_config(valid) == valid
+
+    invalid = {
+        **valid,
+        "targets": [{**valid["targets"][0], "bridge_token_env": "not a variable"}],
+    }
+    with pytest.raises(ValueError, match="bridge_token_env"):
+        validate_config(invalid)
