@@ -202,13 +202,22 @@ def delivery_event_snapshot(
 
         reddit_devvit = empty["reddit_devvit_deliveries"].copy()
         if table is not None:
+            reddit_receipt_column = (
+                "provider_message_id"
+                if "provider_message_id" in event_columns
+                else "NULL"
+            )
             latest_reddit_rows = db.execute(
                 """
                 SELECT delivery_id, output, event_type, attempt,
-                       provider_message_id, created_at
+                       """
+                + reddit_receipt_column
+                + """, created_at
                 FROM (
                     SELECT delivery_id, output, event_type, attempt,
-                           provider_message_id, created_at,
+                           """
+                + reddit_receipt_column
+                + """, created_at,
                            ROW_NUMBER() OVER (
                                PARTITION BY delivery_id ORDER BY id DESC
                            ) AS position
