@@ -28,15 +28,17 @@
   },
   "settings": {
     "global": {
-      "allowedSubreddit": {
-        "type": "string",
-        "label": "Allowed subreddit",
-        "helpText": "The single subreddit this bridge may publish to."
-      },
       "allowedMediaHosts": {
         "type": "string",
         "label": "Allowed media hostnames",
         "helpText": "Comma-separated exact HTTPS hostnames AMN may submit, without schemes or paths."
+      }
+    },
+    "subreddit": {
+      "allowedSubreddit": {
+        "type": "string",
+        "label": "Allowed subreddit",
+        "helpText": "The single subreddit this bridge may publish to."
       }
     }
   },
