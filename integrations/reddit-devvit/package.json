@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "playtest": "devvit playtest"
+    "playtest": "devvit playtest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@devvit/web": "latest",
