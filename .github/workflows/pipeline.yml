@@ -100,7 +100,7 @@ jobs:
           fi
 
       - name: Fail if vetting or publishing failed
-        if: always() && (steps.vet.outputs.exit_code != '0' || steps.bluesky.outputs.exit_code != '' && steps.bluesky.outputs.exit_code != '0')
+        if: always() && (steps.vet.outputs.exit_code != '0' || steps.bluesky.outcome == 'failure' || (steps.bluesky.outputs.exit_code != '' && steps.bluesky.outputs.exit_code != '0'))
         run: |
           echo "::error::vet exit=${{ steps.vet.outputs.exit_code }}, Bluesky publish exit=${{ steps.bluesky.outputs.exit_code }}"
           exit 1
