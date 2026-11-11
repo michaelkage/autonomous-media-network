@@ -212,13 +212,13 @@ def delivery_event_snapshot(
                 SELECT delivery_id, output, event_type, attempt,
                        """
                 + reddit_receipt_column
-                + """, created_at
-                FROM (
+                + " AS provider_message_id, created_at "
+                + "FROM ("
                     SELECT delivery_id, output, event_type, attempt,
                            """
                 + reddit_receipt_column
-                + """, created_at,
-                           ROW_NUMBER() OVER (
+                + " AS provider_message_id, created_at, "
+                + "ROW_NUMBER()" OVER (
                                PARTITION BY delivery_id ORDER BY id DESC
                            ) AS position
                     FROM delivery_events
