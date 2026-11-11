@@ -29,7 +29,7 @@ class RedditDevvitPublisher(Publisher):
         subreddit: str,
         public_base_url: str,
         *,
-        timeout: float = 30.0,
+        timeout: float = 35.0,
     ) -> None:
         endpoint = urlparse(endpoint_url)
         media = urlparse(public_base_url)
