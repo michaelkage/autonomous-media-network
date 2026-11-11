@@ -125,3 +125,13 @@ def test_devvit_bridge_rejects_files_over_reddit_upload_limit(tmp_path: Path) ->
 
     assert publisher.publish(image, "caption") is False
     publisher.session.post.assert_not_called()
+
+
+def test_devvit_bridge_rejects_unsupported_image_format(tmp_path: Path) -> None:
+    image = tmp_path / "animation.gif"
+    image.write_bytes(b"GIF89a")
+    publisher = _publisher()
+    publisher.session.post = MagicMock()
+
+    assert publisher.publish(image, "caption") is False
+    publisher.session.post.assert_not_called()
