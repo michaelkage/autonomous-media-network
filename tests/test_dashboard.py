@@ -393,8 +393,9 @@ def test_dashboard_reddit_devvit_summary_reads_legacy_delivery_schema(tmp_path: 
 def test_dashboard_fetches_authenticated_reddit_provider_state(
     tmp_path: Path, monkeypatch
 ) -> None:
-    import requests
     from unittest.mock import MagicMock
+
+    import requests
 
     from amn.delivery_events import delivery_id_for, record_delivery_event
 
