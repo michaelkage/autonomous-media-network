@@ -204,6 +204,7 @@ def check_operator_alerts(
     incidents = _incidents(database, now=current, stale_after_seconds=stale_after_seconds)
     can_notify = bool(bot_token and chat_id)
     opened = resolved = sent = failed = suppressed = 0
+    due_notifications: list[tuple[str, str]] = []
 
     with closing(_connect(database)) as db:
         db.execute(
@@ -292,41 +293,36 @@ def check_operator_alerts(
                     "WHERE fingerprint = ?",
                     (current, fingerprint),
                 )
+                due_notifications.append((fingerprint, incident["message"]))
             db.commit()
         except BaseException:
             db.rollback()
             raise
 
-    if can_notify:
-        with closing(_connect(database)) as db:
-            due = db.execute(
-                "SELECT fingerprint, message FROM operator_alerts "
-                "WHERE status = 'active' AND last_attempt_at = ?",
-                (current,),
-            ).fetchall()
-        for row in due:
-            try:
-                _send_telegram(
-                    str(bot_token),
-                    str(chat_id),
-                    f"⚠️ AMN ALERT\n{row['message']}",
-                    timeout,
+    for fingerprint, message in due_notifications:
+        try:
+            _send_telegram(
+                str(bot_token),
+                str(chat_id),
+                f"⚠️ AMN ALERT\n{message}",
+                timeout,
+            )
+        except (requests.RequestException, ValueError, RuntimeError, OSError) as exc:
+            with closing(_connect(database)) as db:
+                db.execute(
+                    "UPDATE operator_alerts SET last_error = ? "
+                    "WHERE fingerprint = ? AND status = 'active' AND last_attempt_at = ?",
+                    (f"notification failed ({type(exc).__name__})", fingerprint, current),
                 )
-            except (requests.RequestException, ValueError, RuntimeError, OSError) as exc:
-                with closing(_connect(database)) as db:
-                    db.execute(
-                        "UPDATE operator_alerts SET last_error = ? WHERE fingerprint = ?",
-                        (f"notification failed ({type(exc).__name__})", row["fingerprint"]),
-                    )
-                failed += 1
-            else:
-                with closing(_connect(database)) as db:
-                    db.execute(
-                        "UPDATE operator_alerts SET last_notified_at = ?, last_error = NULL "
-                        "WHERE fingerprint = ? AND status = 'active'",
-                        (current, row["fingerprint"]),
-                    )
-                sent += 1
+            failed += 1
+        else:
+            with closing(_connect(database)) as db:
+                db.execute(
+                    "UPDATE operator_alerts SET last_notified_at = ?, last_error = NULL "
+                    "WHERE fingerprint = ? AND status = 'active' AND last_attempt_at = ?",
+                    (current, fingerprint, current),
+                )
+            sent += 1
 
     return {
         "active": len(incidents),
