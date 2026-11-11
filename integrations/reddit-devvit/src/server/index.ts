@@ -170,8 +170,42 @@ app.post("/external/amn/publish", async (c) => {
       media_id: uploaded.mediaId,
     });
   } catch {
-    // Submission errors can be ambiguous: Reddit may have accepted the post
-    // before the response was lost. Never retry this delivery automatically.
+    // Native image posts can be created asynchronously without returning a
+    // post ID. Search a bounded recent window for this unique Reddit-hosted
+    // media URL before declaring the result ambiguous.
+    try {
+      const recentPosts = await reddit.getNewPosts({
+        subredditName: allowedSubreddit,
+        limit: 50,
+      }).all();
+      const matchingPost = recentPosts.find(
+        (candidate) =>
+          candidate.subredditName.toLowerCase() === allowedSubreddit.toLowerCase() &&
+          candidate.url === uploaded.mediaUrl,
+      );
+      if (matchingPost) {
+        const recovered: DeliveryRecord = {
+          status: "published",
+          post_id: matchingPost.id.replace(/^t3_/, ""),
+          permalink: matchingPost.permalink,
+          updated_at: new Date().toISOString(),
+        };
+        await redis.hSet(DELIVERY_HASH, {
+          [input.delivery_id]: JSON.stringify(recovered),
+        });
+        return c.json({
+          status: "published",
+          post_id: recovered.post_id,
+          permalink: recovered.permalink,
+          recovered: true,
+        });
+      }
+    } catch {
+      // The provider lookup is best-effort. Keep the reservation unresolved.
+    }
+
+    // Reddit may have accepted the post even if its response and subsequent
+    // lookup were unavailable. Never automatically resubmit this delivery.
     await redis.hSet(DELIVERY_HASH, {
       [input.delivery_id]: JSON.stringify({
         status: "unknown",
