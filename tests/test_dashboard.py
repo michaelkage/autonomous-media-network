@@ -388,3 +388,78 @@ def test_dashboard_reddit_devvit_summary_reads_legacy_delivery_schema(tmp_path: 
     summary = response.json()["reddit_devvit_deliveries"]
     assert summary["counts"]["published"] == 1
     assert summary["recent"][0]["provider_message_id"] is None
+
+
+def test_dashboard_fetches_authenticated_reddit_provider_state(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import requests
+    from unittest.mock import MagicMock
+
+    from amn.delivery_events import delivery_id_for, record_delivery_event
+
+    database = tmp_path / "build" / "jobs.sqlite3"
+    record_delivery_event(
+        database,
+        platform="reddit_devvit",
+        delivery_key="provider-state-test",
+        output="outbox/provider.jpg",
+        event_type="provider_accepted",
+        attempt=1,
+        provider_message_id="t3_provider123",
+    )
+    delivery_id = delivery_id_for("reddit_devvit", "provider-state-test")
+    monkeypatch.setenv(
+        "AMN_REDDIT_DEVVIT_URL",
+        "https://amn-media-bridge-sub123-external.devvit.net/external/amn/publish",
+    )
+    monkeypatch.setenv("AMN_REDDIT_DEVVIT_TOKEN", "devvit_at_private")
+    response = MagicMock()
+    response.json.return_value = {
+        "status": "ok",
+        "deliveries": [
+            {
+                "delivery_id": delivery_id,
+                "status": "published",
+                "post_id": "provider123",
+                "permalink": "/r/earthporn/comments/provider123/title/",
+                "updated_at": "2026-11-11T09:00:00.000Z",
+            }
+        ],
+    }
+    calls = {}
+
+    def fake_post(url, **kwargs):
+        calls["url"] = url
+        calls.update(kwargs)
+        return response
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+
+    result = client.get("/api/reddit-devvit/status").json()
+
+    assert result["configured"] is True
+    assert result["deliveries"][0]["status"] == "published"
+    assert result["deliveries"][0]["post_id"] == "provider123"
+    assert calls["url"].endswith("/external/amn/status")
+    assert calls["headers"]["Authorization"] == "bearer devvit_at_private"
+    assert calls["json"] == {"delivery_ids": [delivery_id]}
+    assert calls["timeout"] == 5
+
+
+def test_dashboard_reports_reddit_provider_status_unconfigured(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("AMN_REDDIT_DEVVIT_URL", raising=False)
+    monkeypatch.delenv("AMN_REDDIT_DEVVIT_STATUS_URL", raising=False)
+    monkeypatch.delenv("AMN_REDDIT_DEVVIT_TOKEN", raising=False)
+
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+    result = client.get("/api/reddit-devvit/status").json()
+
+    assert result == {
+        "configured": False,
+        "status": "not_configured",
+        "deliveries": [],
+    }
