@@ -51,9 +51,8 @@ class RedditDevvitPublisher(Publisher):
             or media.fragment
         ):
             raise ValueError("Reddit media URL must be public HTTPS without query or fragment")
-        if (
-            not access_token.startswith("devvit_at_")
-            or any(character.isspace() for character in access_token)
+        if not access_token.startswith("devvit_at_") or any(
+            character.isspace() for character in access_token
         ):
             raise ValueError("a valid Devvit managed endpoint token is required")
         if not isinstance(subreddit, str) or not re.fullmatch(r"[A-Za-z0-9_]{2,21}", subreddit):
