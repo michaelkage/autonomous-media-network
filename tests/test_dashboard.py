@@ -349,8 +349,8 @@ def test_dashboard_exposes_reddit_devvit_delivery_receipts_and_stalled_attempts(
     payload = response.json()["reddit_devvit_deliveries"]
     assert payload["counts"]["published"] == 1
     assert payload["stalled"] == 1
-    assert payload["recent"][0]["provider_message_id"] == "reddit-post-ambiguous"
-    assert payload["recent"][1]["latest_event"] == "published"
+    assert payload["recent"][0]["latest_event"] == "published"
+    assert payload["recent"][1]["provider_message_id"] == "reddit-post-ambiguous"
     assert "delivery-one" not in json.dumps(payload)
     assert "Reddit Devvit delivery health" in client.get("/").text
 
