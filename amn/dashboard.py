@@ -185,8 +185,10 @@ def create_app(root: Path = ROOT) -> Any:
             or parsed_status.password
             or parsed_status.query
             or parsed_status.fragment
+            or parsed_status.port not in (None, 443)
             or not parsed_status.path.endswith("/external/amn/status")
             or not token.startswith("devvit_at_")
+            or any(character.isspace() for character in token)
         ):
             return {
                 "configured": False,
