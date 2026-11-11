@@ -1,0 +1,36 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "amn-media-bridge",
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.js",
+    "externalEndpoints": {
+      "amnPublish": {
+        "endpoint": "/external/amn/publish",
+        "scopes": ["global"]
+      }
+    }
+  },
+  "permissions": {
+    "media": true,
+    "redis": true,
+    "reddit": true
+  },
+  "settings": {
+    "global": {
+      "allowedSubreddit": {
+        "type": "string",
+        "label": "Allowed subreddit",
+        "helpText": "The single subreddit this bridge may publish to."
+      },
+      "allowedMediaHosts": {
+        "type": "string",
+        "label": "Allowed media hostnames",
+        "helpText": "Comma-separated exact HTTPS hostnames AMN may submit, without schemes or paths."
+      }
+    }
+  },
+  "scripts": {
+    "build": "vite build"
+  }
+}
