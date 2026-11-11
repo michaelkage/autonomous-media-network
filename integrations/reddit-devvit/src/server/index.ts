@@ -3,6 +3,7 @@ import { media, reddit, redis, settings } from "@devvit/web/server";
 import {
   isAllowedImageUrl,
   isDeliveryId,
+  isReconciliationEligible,
   isSafeAuditText,
   isSubredditName,
   normalizePostTitle,
@@ -107,8 +108,6 @@ app.post("/external/amn/publish", async (c) => {
     });
   }
   if (current) {
-    // Existing failed or ambiguous records require an operator reset. This
-    // intentionally favors duplicate prevention over automatic recovery.
     return c.json({ status: "reconciliation_required" }, 409);
   }
 
@@ -141,8 +140,7 @@ app.post("/external/amn/publish", async (c) => {
     uploaded = await media.upload({ url: input.image_url, type: "image" });
     if (!uploaded.mediaUrl) throw new Error("Reddit media upload returned no URL");
   } catch {
-    // No Reddit post has been submitted yet, so releasing the reservation is
-    // safe and lets AMN retry a transient media-hosting failure.
+    // No post submission has started, so releasing this reservation is safe.
     await redis.hDel(DELIVERY_HASH, [input.delivery_id]);
     return c.json({ status: "error", error: "media_upload_failed" }, 502);
   }
@@ -217,8 +215,8 @@ app.post("/external/amn/publish", async (c) => {
       // The provider lookup is best-effort. Keep the reservation unresolved.
     }
 
-    // Reddit may have accepted the post even if its response and subsequent
-    // lookup were unavailable. Never automatically resubmit this delivery.
+    // This is written only after submitPost and the recovery lookup have both
+    // finished. It is therefore the only safe state for manual reconciliation.
     await redis.hSet(DELIVERY_HASH, {
       [input.delivery_id]: JSON.stringify({
         status: "unknown",
@@ -228,8 +226,6 @@ app.post("/external/amn/publish", async (c) => {
     return c.json({ status: "reconciliation_required" }, 202);
   }
 });
-
-
 
 type StatusRequest = {
   delivery_ids: string[];
@@ -312,7 +308,7 @@ app.post("/external/amn/reconcile", async (c) => {
   const existing = jsonRecord<DeliveryRecord>(
     await redis.hGet(DELIVERY_HASH, input.delivery_id),
   );
-  if (!existing || existing.status === "published") {
+  if (!existing || !isReconciliationEligible(existing.status)) {
     return c.json({ status: "error", error: "delivery_not_reconcilable" }, 409);
   }
   const updatedAt = Date.parse(existing.updated_at);
