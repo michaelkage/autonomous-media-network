@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
-
 import requests
+from unittest.mock import MagicMock
 
 from amn.diagnostics import run_diagnostics
 
@@ -279,7 +278,10 @@ def test_diagnostics_checks_devvit_bridge_configuration(tmp_path: Path, monkeypa
     assert session.post.call_args.args[0] == (
         "https://amn-media-bridge-abc123-external.devvit.net/external/amn/status"
     )
-    assert session.post.call_args.kwargs["headers"]["Authorization"] == "bearer devvit_at_example"
+    assert (
+        session.post.call_args.kwargs["headers"]["Authorization"]
+        == "bearer devvit_at_example"
+    )
     assert session.post.call_args.kwargs["json"] == {"delivery_ids": []}
     assert session.post.call_args.kwargs["timeout"] == 10
     assert session.get.call_args.args[0] == "https://media.example.com/outbox/asset.jpg"
