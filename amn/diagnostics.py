@@ -377,7 +377,7 @@ def run_diagnostics(root: Path, *, session: Any = None) -> list[dict[str, Any]]:
                     )
                 )
 
-        if platform in {"instagram", "tiktok", "reddit"}:
+        if platform in {"instagram", "tiktok", "reddit", "reddit_devvit"}:
             media_url = target.get("public_base_url", "").rstrip("/")
             sample = next(
                 (
