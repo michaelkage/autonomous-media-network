@@ -319,9 +319,7 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
                     "subreddit or public_base_url missing"
                 )
                 continue
-            publisher = RedditDevvitPublisher(
-                endpoint, token, str(subreddit), str(media_url)
-            )
+            publisher = RedditDevvitPublisher(endpoint, token, str(subreddit), str(media_url))
         elif platform == "x":
             token = os.environ.get(target.get("token_env", "X_USER_ACCESS_TOKEN"))
             if not token:
