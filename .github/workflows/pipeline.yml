@@ -47,19 +47,23 @@ jobs:
       # Publishing is irreversible: a post cannot be un-shared, only deleted.
       # Off unless AMN_PUBLISH is explicitly enabled.
       - name: Publish to Bluesky
+        id: bluesky
         if: steps.vet.outputs.exit_code == '0' && vars.AMN_PUBLISH == 'true'
         env:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
         run: |
           if [ -z "$BLUESKY_HANDLE" ] || [ -z "$BLUESKY_APP_PASSWORD" ]; then
-            echo "::warning::AMN_PUBLISH is on but BLUESKY_HANDLE/BLUESKY_APP_PASSWORD are unset, skipping"
-            exit 0
+            echo "::error::AMN_PUBLISH is enabled but BLUESKY_HANDLE/BLUESKY_APP_PASSWORD are unset"
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
           pip install -e ".[bluesky]"
           set +e
           python -m amn.pipeline publish --platform bluesky --root .
-          echo "publish_exit=$?" >> "$GITHUB_OUTPUT"
+          publish_exit=$?
+          echo "exit_code=$publish_exit" >> "$GITHUB_OUTPUT"
+          exit 0
 
       # Telegram publishing is independently opt-in. The bot credentials are
       # mapped explicitly from repository secrets; merely creating a secret does
@@ -77,6 +81,7 @@ jobs:
           python -m amn.pipeline publish --platform telegram --root .
 
       - name: Commit results
+        if: always()
         run: |
           git config user.name "amn-bot"
           git config user.email "amn-bot@users.noreply.github.com"
@@ -94,11 +99,11 @@ jobs:
             git push || echo "::warning::could not push results"
           fi
 
-      - name: Fail if vet had errors
-        if: always() && steps.vet.outputs.exit_code != '0'
+      - name: Fail if vetting or publishing failed
+        if: always() && (steps.vet.outputs.exit_code != '0' || steps.bluesky.outputs.exit_code != '' && steps.bluesky.outputs.exit_code != '0')
         run: |
-          echo "::error::vet exited with ${{ steps.vet.outputs.exit_code }}, see manifest"
-          exit ${{ steps.vet.outputs.exit_code }}
+          echo "::error::vet exit=${{ steps.vet.outputs.exit_code }}, Bluesky publish exit=${{ steps.bluesky.outputs.exit_code }}"
+          exit 1
 
       - name: Upload run artifacts
         if: always()
