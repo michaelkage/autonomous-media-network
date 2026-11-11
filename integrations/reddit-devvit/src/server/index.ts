@@ -9,7 +9,7 @@ type PublishRequest = {
 };
 
 type DeliveryRecord = {
-  status: "uploading" | "submitting" | "published" | "unknown";
+  status: "uploading" | "submitting" | "published" | "unknown" | "not_published";
   post_id?: string;
   permalink?: string;
   updated_at: string;
@@ -257,17 +257,17 @@ app.post("/external/amn/status", async (c) => {
   );
   return c.json({
     status: "ok",
-    deliveries: records.map(({ delivery_id, record }) => ({
+    deliveries: records.map(({ delivery_id, record, reconciliation }) => ({
       delivery_id,
       status: record?.status ?? "not_found",
       post_id: record?.post_id ?? null,
       permalink: record?.permalink ?? null,
       updated_at: record?.updated_at ?? null,
-      reconciliation: record?.resolution
+      reconciliation: reconciliation?.resolution
         ? {
-            resolution: record.resolution,
-            resolved_at: record.resolved_at ?? null,
-            actor: record.resolution_actor ?? null,
+            resolution: reconciliation.resolution,
+            resolved_at: reconciliation.resolved_at ?? null,
+            actor: reconciliation.resolution_actor ?? null,
           }
         : null,
     })),
@@ -317,6 +317,7 @@ app.post("/external/amn/reconcile", async (c) => {
 
   const resolvedAt = new Date().toISOString();
   const resolutionAudit = {
+    status: input.resolution,
     resolution: input.resolution,
     resolved_at: resolvedAt,
     actor: input.actor.trim(),
