@@ -16,6 +16,17 @@ export function isSubredditName(value: unknown): value is string {
   return typeof value === "string" && SUBREDDIT_PATTERN.test(value);
 }
 
+export function isSafeAuditText(value: unknown, maxLength: number): value is string {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim();
+  return (
+    normalized.length > 0 &&
+    normalized.length <= maxLength &&
+    !/[\\u0000-\\u001f\\u007f]/.test(normalized) &&
+    !/devvit_at_|\\bbearer\\s/i.test(normalized)
+  );
+}
+
 export function normalizePostTitle(value: string, fallback: string): string {
   const title = value.trim().replace(/\s+/g, " ").slice(0, 300);
   return title || fallback.slice(0, 300);
