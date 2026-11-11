@@ -22,8 +22,8 @@ export function isSafeAuditText(value: unknown, maxLength: number): value is str
   return (
     normalized.length > 0 &&
     normalized.length <= maxLength &&
-    !/[\\u0000-\\u001f\\u007f]/.test(normalized) &&
-    !/devvit_at_|\\bbearer\\s/i.test(normalized)
+    !/[\u0000-\u001f\u007f]/.test(normalized) &&
+    !/devvit_at_|\bbearer\s/i.test(normalized)
   );
 }
 
