@@ -1,6 +1,9 @@
 {
   "sources": {
-    "reddit": ["earthporn", "wallpapers"]
+    "reddit": [
+      "earthporn",
+      "wallpapers"
+    ]
   },
   "targets": [
     {
@@ -18,6 +21,15 @@
       "public_base_url": "https://media.example.com/outbox",
       "token_env": "REDDIT_USER_ACCESS_TOKEN",
       "user_agent_env": "AMN_REDDIT_USER_AGENT"
+    },
+    {
+      "id": "reddit-devvit-main",
+      "platform": "reddit_devvit",
+      "enabled": false,
+      "subreddit": "YOUR_SUBREDDIT",
+      "public_base_url": "https://media.example.com/outbox",
+      "bridge_url_env": "AMN_REDDIT_DEVVIT_URL",
+      "bridge_token_env": "AMN_REDDIT_DEVVIT_TOKEN"
     },
     {
       "id": "x-main",
@@ -53,10 +65,31 @@
   "storage": null,
   "routes": {
     "default": [],
-    "landscape": ["telegram-main", "facebook-main", "x-main", "reddit-main", "instagram-main", "tiktok-main"],
-    "architecture": ["telegram-main", "instagram-main"],
-    "earthporn": ["telegram-main", "reddit-main", "instagram-main"],
-    "wallpapers": ["telegram-main", "reddit-main", "tiktok-main"]
+    "landscape": [
+      "telegram-main",
+      "facebook-main",
+      "x-main",
+      "reddit-main",
+      "instagram-main",
+      "tiktok-main",
+      "reddit-devvit-main"
+    ],
+    "architecture": [
+      "telegram-main",
+      "instagram-main"
+    ],
+    "earthporn": [
+      "telegram-main",
+      "reddit-main",
+      "instagram-main",
+      "reddit-devvit-main"
+    ],
+    "wallpapers": [
+      "telegram-main",
+      "reddit-main",
+      "tiktok-main",
+      "reddit-devvit-main"
+    ]
   },
   "thresholds": {
     "min_likes": 500,
