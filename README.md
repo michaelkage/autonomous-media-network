@@ -18,7 +18,7 @@ The optional `reddit_devvit` target creates a Reddit-hosted image post using Dev
 
 The bridge app lives in `integrations/reddit-devvit`. It uses a Devvit external endpoint authenticated with a managed token, Reddit-hosted media, and the installation's Redis store. **External endpoints are a Reddit limited-access feature.** Request access from Reddit before expecting the endpoint to work. Install the app in the target subreddit, set the installation's `allowedSubreddit` setting and the app-wide comma-separated `allowedMediaHosts` setting, create a global managed token in Developer Settings, and keep that token only in `AMN_REDDIT_DEVVIT_TOKEN`. Set `AMN_REDDIT_DEVVIT_URL` to the app's global external endpoint URL ending in `/external/amn/publish`.
 
-Build and playtest the bridge from its directory with Node.js and the Devvit CLI:
+Build and playtest the bridge from its directory with Node.js and the Devvit CLI. The bridge uses Reddit's official `@devvit/start/vite` plugin to produce the runtime-compatible CommonJS server bundle:
 
 ```bash
 cd integrations/reddit-devvit
