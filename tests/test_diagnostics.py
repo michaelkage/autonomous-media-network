@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import requests
 from unittest.mock import MagicMock
+
+import requests
 
 from amn.diagnostics import run_diagnostics
 
