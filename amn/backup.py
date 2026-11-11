@@ -112,6 +112,14 @@ def restore_database(
 
     safety_copy: Path | None = None
     if destination_path.is_file():
+        try:
+            with closing(sqlite3.connect(destination_path)) as current:
+                checkpoint = current.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            if checkpoint is None or checkpoint[0] != 0:
+                raise ValueError("could not checkpoint the current database before restore")
+        except sqlite3.DatabaseError as exc:
+            raise ValueError(f"could not checkpoint the current database: {exc}") from exc
+
         from datetime import UTC, datetime
 
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
