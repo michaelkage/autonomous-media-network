@@ -169,15 +169,23 @@ def create_app(root: Path = ROOT) -> Any:
         status_url = os.environ.get("AMN_REDDIT_DEVVIT_STATUS_URL", "")
         token = os.environ.get("AMN_REDDIT_DEVVIT_TOKEN", "")
         if not status_url and publish_url:
-            parsed = urlsplit(publish_url)
-            if parsed.path.endswith("/external/amn/publish"):
-                status_url = parsed._replace(
-                    path=parsed.path.removesuffix("/publish") + "/status",
+            try:
+                parsed_publish = urlsplit(publish_url)
+            except ValueError:
+                parsed_publish = None
+            if parsed_publish and parsed_publish.path.endswith("/external/amn/publish"):
+                status_url = parsed_publish._replace(
+                    path=parsed_publish.path.removesuffix("/publish") + "/status",
                     query="",
                     fragment="",
                 ).geturl()
 
-        parsed_status = urlsplit(status_url)
+        try:
+            parsed_status = urlsplit(status_url)
+            valid_port = parsed_status.port in (None, 443)
+        except ValueError:
+            parsed_status = urlsplit("")
+            valid_port = False
         if (
             parsed_status.scheme != "https"
             or not parsed_status.hostname
@@ -185,7 +193,7 @@ def create_app(root: Path = ROOT) -> Any:
             or parsed_status.password
             or parsed_status.query
             or parsed_status.fragment
-            or parsed_status.port not in (None, 443)
+            or not valid_port
             or not parsed_status.path.endswith("/external/amn/status")
             or not token.startswith("devvit_at_")
             or any(character.isspace() for character in token)
