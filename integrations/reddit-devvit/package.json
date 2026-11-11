@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "playtest": "devvit playtest",
+    "playtest": "npx devvit playtest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
