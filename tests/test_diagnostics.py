@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import requests
+
 from amn.diagnostics import run_diagnostics
 
 
@@ -267,11 +269,86 @@ def test_diagnostics_checks_devvit_bridge_configuration(tmp_path: Path, monkeypa
     )
     monkeypatch.setenv("AMN_REDDIT_DEVVIT_TOKEN", "devvit_at_example")
     session = MagicMock()
+    session.post.return_value = _response({"status": "ok", "deliveries": []})
     session.get.return_value = _response({"ok": True})
 
     results = run_diagnostics(tmp_path, session=session)
 
-    assert [item["check"] for item in results] == ["bridge_configuration", "public_media"]
+    assert [item["check"] for item in results] == ["bridge_access", "public_media"]
     assert all(item["ok"] for item in results)
-    assert "not verified" in results[0]["detail"]
+    assert session.post.call_args.args[0] == (
+        "https://amn-media-bridge-abc123-external.devvit.net/external/amn/status"
+    )
+    assert session.post.call_args.kwargs["headers"]["Authorization"] == "bearer devvit_at_example"
+    assert session.post.call_args.kwargs["json"] == {"delivery_ids": []}
+    assert session.post.call_args.kwargs["timeout"] == 10
     assert session.get.call_args.args[0] == "https://media.example.com/outbox/asset.jpg"
+
+
+def test_diagnostics_rejects_non_devvit_bridge_host_without_sending_token(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _workspace(
+        tmp_path,
+        {
+            "targets": [
+                {
+                    "id": "reddit-devvit",
+                    "platform": "reddit_devvit",
+                    "enabled": True,
+                    "subreddit": "earthporn",
+                    "public_base_url": "https://media.example.com/outbox",
+                }
+            ],
+            "routes": {},
+        },
+    )
+    monkeypatch.setenv(
+        "AMN_REDDIT_DEVVIT_URL",
+        "https://attacker.example/external/amn/publish",
+    )
+    monkeypatch.setenv("AMN_REDDIT_DEVVIT_TOKEN", "devvit_at_sensitive")
+    session = MagicMock()
+
+    results = run_diagnostics(tmp_path, session=session)
+
+    assert results[0]["check"] == "credentials"
+    assert results[0]["ok"] is False
+    session.post.assert_not_called()
+
+
+def test_diagnostics_reports_devvit_authentication_failure_without_leaking_details(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _workspace(
+        tmp_path,
+        {
+            "targets": [
+                {
+                    "id": "reddit-devvit",
+                    "platform": "reddit_devvit",
+                    "enabled": True,
+                    "subreddit": "earthporn",
+                    "public_base_url": "https://media.example.com/outbox",
+                }
+            ],
+            "routes": {},
+        },
+    )
+    monkeypatch.setenv(
+        "AMN_REDDIT_DEVVIT_URL",
+        "https://amn-media-bridge-abc123-external.devvit.net/external/amn/publish",
+    )
+    monkeypatch.setenv("AMN_REDDIT_DEVVIT_TOKEN", "devvit_at_sensitive")
+    session = MagicMock()
+    session.post.side_effect = requests.RequestException("secret-bearing provider error")
+
+    results = run_diagnostics(tmp_path, session=session)
+
+    assert results[0] == {
+        "target": "reddit-devvit",
+        "check": "bridge_access",
+        "ok": False,
+        "detail": "Devvit endpoint authentication or status check failed",
+    }
+    assert "sensitive" not in json.dumps(results)
