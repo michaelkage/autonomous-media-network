@@ -4,6 +4,7 @@ import {
   isAllowedImageUrl,
   isDeliveryId,
   isSubredditName,
+  isSafeAuditText,
   normalizePostTitle,
   verifyPostReceipt,
 } from "./validation";
@@ -22,6 +23,16 @@ describe("Devvit request validation", () => {
     expect(isSubredditName("r/earthporn")).toBe(false);
     expect(isSubredditName("a")).toBe(false);
     expect(isSubredditName("bad-name")).toBe(false);
+  });
+
+  it("rejects unsafe operator audit text and credential-like values", () => {
+    expect(isSafeAuditText("operator@example.com", 100)).toBe(true);
+    expect(isSafeAuditText("a".repeat(101), 100)).toBe(false);
+    expect(isSafeAuditText("devvit_at_private", 100)).toBe(false);
+    expect(isSafeAuditText("Bearer secret-token", 100)).toBe(false);
+    expect(isSafeAuditText("operator\\nforged-entry", 100)).toBe(false);
+    expect(isSafeAuditText("   ", 100)).toBe(false);
+    expect(isSafeAuditText(null, 100)).toBe(false);
   });
 
   it("normalizes title whitespace and applies the Reddit title limit", () => {
