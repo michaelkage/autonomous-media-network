@@ -3,8 +3,8 @@ import { media, reddit, redis, settings } from "@devvit/web/server";
 import {
   isAllowedImageUrl,
   isDeliveryId,
-  isSubredditName,
   isSafeAuditText,
+  isSubredditName,
   normalizePostTitle,
   verifyPostReceipt,
 } from "./validation";
