@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -68,10 +67,9 @@ def test_restore_requires_explicit_worker_shutdown_and_keeps_safety_copy(
 
 def test_restore_refuses_active_leases(tmp_path: Path) -> None:
     source = tmp_path / "backup.sqlite3"
-    backup_database(
-        (lambda path: (JobQueue(path), path)[1])(tmp_path / "empty.sqlite3"),
-        source,
-    )
+    empty_database = tmp_path / "empty.sqlite3"
+    JobQueue(empty_database)
+    backup_database(empty_database, source)
     destination = tmp_path / "current.sqlite3"
     queue = JobQueue(destination)
     queue.enqueue("pipeline")
