@@ -521,7 +521,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "jobs":
         from .jobs import JobQueue
 
-        queue = JobQueue(args.root / BUILD_DIR / "jobs.sqlite3")
         if args.jobs_command in {"backup", "verify-backup", "restore"}:
             from .backup import backup_database, restore_database, verify_database
 
@@ -546,6 +545,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"queue backup operation failed: {exc}", file=sys.stderr)
                 return 1
             return 0
+
+        queue = JobQueue(args.root / BUILD_DIR / "jobs.sqlite3")
         if args.jobs_command == "schedule":
             if args.schedule_command == "add":
                 if args.every_seconds <= 0:
