@@ -224,7 +224,7 @@ def delivery_event_snapshot(
                 ORDER BY created_at DESC
                 LIMIT 100
                 """
-            )           ).fetchall()
+            ).fetchall()
             for row in latest_reddit_rows:
                 event_type = str(row["event_type"])
                 if event_type in reddit_devvit["counts"]:
