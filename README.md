@@ -11,6 +11,29 @@ ruff check .
 ruff format --check .
 ```
 
+
+### Native Reddit image publishing through Devvit
+
+The optional `reddit_devvit` target creates a Reddit-hosted image post using Devvit's media upload capability and `reddit.submitPost({ kind: "image", imageUrls })`. It is separate from the existing Reddit Data API link-post adapter, so the current adapter remains available as a fallback. Configure the target in `config/amn.json` with a subreddit and public HTTPS media URL, add it to the desired routes, and enable S3-compatible storage if AMN must upload local assets to that URL.
+
+The bridge app lives in `integrations/reddit-devvit`. It uses a Devvit external endpoint authenticated with a managed token, Reddit-hosted media, and the installation's Redis store. **External endpoints are a Reddit limited-access feature.** Request access from Reddit before expecting the endpoint to work. Install the app in the target subreddit, set the app's `allowedSubreddit` and comma-separated `allowedMediaHosts` settings, create a global managed token in Developer Settings, and keep that token only in `AMN_REDDIT_DEVVIT_TOKEN`. Set `AMN_REDDIT_DEVVIT_URL` to the app's global external endpoint URL ending in `/external/amn/publish`.
+
+Build and playtest the bridge from its directory with Node.js and the Devvit CLI:
+
+```bash
+cd integrations/reddit-devvit
+npm install
+npx devvit login
+npm run build
+npx devvit playtest
+```
+
+AMN's bridge target uses `bridge_url_env` and `bridge_token_env` to select those environment variables. The image must be publicly fetchable over HTTPS from one of the exact hostnames in `allowedMediaHosts`; Reddit's runtime media upload supports PNG, JPEG, and WEBP, with a 20 MB maximum and a 30-second upload timeout. Keep images comfortably below that limit.
+
+The bridge reserves each AMN delivery ID in Redis before uploading or submitting. Repeated requests return the original post receipt; requests encountering a processing or ambiguous record are blocked instead of creating a second post. A submission timeout is treated as ambiguous, not as a clean failure. If the bridge is left in an unresolved state, an operator must independently inspect the subreddit before using the authenticated `/external/amn/reconcile` endpoint: resolve as `published` with the verified post ID/permalink, or `not_published` only after confirming no post exists. This is deliberate at-most-once protection at the bridge boundary; a crash after the remote post is created but before Redis stores its receipt still requires manual reconciliation. Do not reset an ambiguous record just to make a retry go away.
+
+The bridge posts as the Devvit app account, not as the Reddit account that installed it. Native image post support is distinct from a rich-text post containing an embedded image. No live Reddit submission or Devvit deployment is performed by AMN's automated test suite.
+
 ## Pipeline
 
 ```bash
@@ -40,6 +63,10 @@ REDDIT_USER_ACCESS_TOKEN="..." REDDIT_SUBREDDIT="earthporn" \
 AMN_REDDIT_USER_AGENT="linux:amn:v0.2.0 (by /u/your_username)" \
 AMN_PUBLIC_MEDIA_URL="https://media.example.com/outbox" \
   amn publish --platform reddit --root .
+
+# Native Reddit image posts use the optional Devvit bridge target in amn.json.
+# Configure AMN_REDDIT_DEVVIT_URL and AMN_REDDIT_DEVVIT_TOKEN in the AMN worker environment.
+amn publish --routed --root .
 
 # X: OAuth 2.0 user access token with tweet.write, media.write, and users.read
 X_USER_ACCESS_TOKEN="..." amn publish --platform x --root .
