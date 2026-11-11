@@ -10,7 +10,8 @@
   "dependencies": {
     "@devvit/redis": "latest",
     "@devvit/reddit": "latest",
-    "@devvit/web": "latest"
+    "@devvit/web": "latest",
+    "hono": "latest"
   },
   "devDependencies": {
     "typescript": "latest",
