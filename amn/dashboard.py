@@ -269,13 +269,17 @@ def create_app(root: Path = ROOT) -> Any:
             deliveries.append(
                 {
                     "delivery_id": delivery_id,
-                    "status": status if isinstance(status, str) and status in {
+                    "status": status
+                    if isinstance(status, str)
+                    and status
+                    in {
                         "uploading",
                         "submitting",
                         "published",
                         "unknown",
                         "not_found",
-                    } else "invalid",
+                    }
+                    else "invalid",
                     "post_id": post_id if isinstance(post_id, str) else None,
                     "permalink": (
                         permalink
