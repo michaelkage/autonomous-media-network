@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   isAllowedImageUrl,
   isDeliveryId,
-  isSubredditName,
   isSafeAuditText,
+  isSubredditName,
   normalizePostTitle,
   verifyPostReceipt,
 } from "./validation";
