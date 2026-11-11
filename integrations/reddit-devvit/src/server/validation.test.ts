@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isAllowedImageUrl,
   isDeliveryId,
+  isReconciliationEligible,
   isSafeAuditText,
   isSubredditName,
   normalizePostTitle,
@@ -35,6 +36,15 @@ describe("Devvit request validation", () => {
     expect(isSafeAuditText(null, 100)).toBe(false);
   });
 
+  it("only permits reconciliation after the publish attempt is conclusively idle", () => {
+    expect(isReconciliationEligible("unknown")).toBe(true);
+    expect(isReconciliationEligible("uploading")).toBe(false);
+    expect(isReconciliationEligible("submitting")).toBe(false);
+    expect(isReconciliationEligible("published")).toBe(false);
+    expect(isReconciliationEligible("not_found")).toBe(false);
+    expect(isReconciliationEligible(undefined)).toBe(false);
+  });
+
   it("normalizes title whitespace and applies the Reddit title limit", () => {
     expect(normalizePostTitle("  a\n  landscape  ", "fallback")).toBe("a landscape");
     expect(normalizePostTitle("", "fallback.jpg")).toBe("fallback.jpg");
@@ -43,22 +53,12 @@ describe("Devvit request validation", () => {
 
   it("allows only HTTPS image URLs on exact approved hosts", () => {
     const hosts = ["cdn.example.com"];
-    expect(
-      isAllowedImageUrl("https://cdn.example.com/outbox/image.jpg", hosts),
-    ).toBe(true);
-    expect(
-      isAllowedImageUrl("https://cdn.example.com:443/outbox/image.webp", hosts),
-    ).toBe(true);
-    expect(
-      isAllowedImageUrl("https://cdn.example.com.evil.test/image.jpg", hosts),
-    ).toBe(false);
+    expect(isAllowedImageUrl("https://cdn.example.com/outbox/image.jpg", hosts)).toBe(true);
+    expect(isAllowedImageUrl("https://cdn.example.com:443/outbox/image.webp", hosts)).toBe(true);
+    expect(isAllowedImageUrl("https://cdn.example.com.evil.test/image.jpg", hosts)).toBe(false);
     expect(isAllowedImageUrl("http://cdn.example.com/image.jpg", hosts)).toBe(false);
-    expect(
-      isAllowedImageUrl("https://cdn.example.com:444/image.jpg", hosts),
-    ).toBe(false);
-    expect(
-      isAllowedImageUrl("https://cdn.example.com/image.jpg?token=secret", hosts),
-    ).toBe(false);
+    expect(isAllowedImageUrl("https://cdn.example.com:444/image.jpg", hosts)).toBe(false);
+    expect(isAllowedImageUrl("https://cdn.example.com/image.jpg?token=secret", hosts)).toBe(false);
     expect(isAllowedImageUrl("https://cdn.example.com/image.gif", hosts)).toBe(false);
     expect(isAllowedImageUrl("not a URL", hosts)).toBe(false);
   });
