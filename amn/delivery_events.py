@@ -123,6 +123,12 @@ def delivery_event_snapshot(
     empty = {
         "counts": {},
         "recent": [],
+        "reddit_devvit_deliveries": {
+            "counts": {"published": 0, "provider_accepted": 0, "attempt_failed": 0, "retry_scheduled": 0, "attempt_started": 0},
+            "stalled": 0,
+            "stale_after_seconds": stale_after_seconds,
+            "recent": [],
+        },
         "webhooks": {
             "received": 0,
             "last_received_at": None,
@@ -193,6 +199,45 @@ def delivery_event_snapshot(
                     (limit,),
                 )
             ]
+
+        reddit_devvit = empty["reddit_devvit_deliveries"].copy()
+        if table is not None:
+            latest_reddit_rows = db.execute(
+                """
+                SELECT delivery_id, output, event_type, attempt,
+                       provider_message_id, created_at
+                FROM (
+                    SELECT delivery_id, output, event_type, attempt,
+                           provider_message_id, created_at,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY delivery_id ORDER BY id DESC
+                           ) AS position
+                    FROM delivery_events
+                    WHERE platform = 'reddit_devvit'
+                )
+                WHERE position = 1
+                ORDER BY created_at DESC
+                LIMIT 100
+                """
+            ).fetchall()
+            for row in latest_reddit_rows:
+                event_type = str(row["event_type"])
+                if event_type in reddit_devvit["counts"]:
+                    reddit_devvit["counts"][event_type] += 1
+                age = max(0.0, now - float(row["created_at"]))
+                if event_type in {"attempt_started", "provider_accepted", "retry_scheduled"} and age >= stale_after_seconds:
+                    reddit_devvit["stalled"] += 1
+                reddit_devvit["recent"].append(
+                    {
+                        "delivery_id": str(row["delivery_id"]),
+                        "output": str(row["output"]),
+                        "latest_event": event_type,
+                        "attempt": int(row["attempt"]),
+                        "provider_message_id": row["provider_message_id"],
+                        "age_seconds": int(age),
+                    }
+                )
+        empty["reddit_devvit_deliveries"] = reddit_devvit
 
         webhook_table = db.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' "
@@ -365,6 +410,7 @@ def delivery_event_snapshot(
         "counts": counts,
         "recent": recent,
         "webhooks": webhooks,
+        "reddit_devvit_deliveries": reddit_devvit,
         "tiktok_operations": operations,
         "instagram_operations": instagram,
     }
