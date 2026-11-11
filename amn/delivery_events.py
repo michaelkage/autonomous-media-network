@@ -9,7 +9,12 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-__all__ = ["delivery_id_for", "record_delivery_event", "delivery_event_snapshot"]
+__all__ = [
+    "delivery_id_for",
+    "reddit_devvit_delivery_ids",
+    "record_delivery_event",
+    "delivery_event_snapshot",
+]
 
 
 def _connect(database: Path) -> sqlite3.Connection:
@@ -27,6 +32,35 @@ def delivery_id_for(platform: str, delivery_key: str) -> str:
         raise ValueError("platform and delivery_key are required")
     material = f"{platform}\0{delivery_key}"
     return hashlib.sha256(material.encode()).hexdigest()
+
+
+def reddit_devvit_delivery_ids(database: Path, limit: int = 25) -> list[str]:
+    """Return recent distinct Reddit Devvit delivery IDs for provider reconciliation."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+        raise ValueError("limit must be an integer between 1 and 50")
+    if not Path(database).is_file():
+        return []
+    with closing(_connect(database)) as db:
+        table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'delivery_events'"
+        ).fetchone()
+        if table is None:
+            return []
+        return [
+            str(row["delivery_id"])
+            for row in db.execute(
+                """
+                SELECT delivery_id
+                FROM delivery_events
+                WHERE platform = 'reddit_devvit'
+                GROUP BY delivery_id
+                ORDER BY MAX(id) DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+        ]
 
 
 def record_delivery_event(
