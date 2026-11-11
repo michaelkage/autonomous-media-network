@@ -394,6 +394,10 @@ app.post("/external/amn/reconcile", async (c) => {
 
   if (claim.resolution === "not_published") {
     await redis.hDel(DELIVERY_HASH, [input.delivery_id]);
+    // Release the decision claim only after the reset is durable. This lets a
+    // later retry of the same AMN delivery ID receive a fresh reconciliation
+    // decision if that new publish attempt also becomes ambiguous.
+    await redis.hDel(RECONCILIATION_CLAIMS_HASH, [input.delivery_id]);
     return c.json({ status: "reset", delivery_id: input.delivery_id });
   }
 
