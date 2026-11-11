@@ -16,6 +16,12 @@
         "scopes": [
           "global"
         ]
+      },
+      "amnStatus": {
+        "endpoint": "/external/amn/status",
+        "scopes": [
+          "global"
+        ]
       }
     }
   },
