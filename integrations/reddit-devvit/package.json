@@ -8,8 +8,6 @@
     "playtest": "devvit playtest"
   },
   "dependencies": {
-    "@devvit/redis": "latest",
-    "@devvit/reddit": "latest",
     "@devvit/web": "latest",
     "hono": "latest"
   },
