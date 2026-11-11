@@ -116,6 +116,8 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
         "facebook_page_id",
         "subreddit",
         "user_agent_env",
+        "bridge_url_env",
+        "bridge_token_env",
         "public_base_url",
         "privacy_level",
         "direct_post_enabled",
@@ -142,7 +144,14 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"target {target_id!r}: enabled must be boolean")
         if "direct_post_enabled" in target and not isinstance(target["direct_post_enabled"], bool):
             raise ValueError(f"target {target_id!r}: direct_post_enabled must be boolean")
-        for env_key in ("token_env", "handle_env", "password_env", "user_agent_env"):
+        for env_key in (
+            "token_env",
+            "handle_env",
+            "password_env",
+            "user_agent_env",
+            "bridge_url_env",
+            "bridge_token_env",
+        ):
             value = target.get(env_key)
             if value is not None and (not isinstance(value, str) or not value.isidentifier()):
                 raise ValueError(
@@ -160,7 +169,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"target {target_id!r}: {string_key} must be a non-empty string")
 
-        if platform.lower() in {"instagram", "tiktok", "reddit"}:
+        if platform.lower() in {"instagram", "tiktok", "reddit", "reddit_devvit"}:
             from urllib.parse import urlparse
 
             media_url = target.get("public_base_url")
@@ -169,7 +178,7 @@ def validate_config(data: dict[str, Any]) -> dict[str, Any]:
             parsed = urlparse(media_url)
             if parsed.scheme != "https" or not parsed.netloc:
                 raise ValueError(f"target {target_id!r}: public_base_url must use HTTPS")
-        if platform.lower() == "reddit" and target.get("enabled", True):
+        if platform.lower() in {"reddit", "reddit_devvit"} and target.get("enabled", True):
             if not re.fullmatch(r"[A-Za-z0-9_]{2,21}", target.get("subreddit", "")):
                 raise ValueError(f"target {target_id!r}: subreddit must be a valid subreddit name")
         if platform.lower() == "facebook" and target.get("enabled", True):
@@ -288,6 +297,22 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
                 )
                 continue
             publisher = RedditPublisher(token, str(subreddit), str(media_url), user_agent)
+        elif platform == "reddit_devvit":
+            from .publishers.reddit_devvit import RedditDevvitPublisher
+
+            endpoint = os.environ.get(target.get("bridge_url_env", "AMN_REDDIT_DEVVIT_URL"))
+            token = os.environ.get(target.get("bridge_token_env", "AMN_REDDIT_DEVVIT_TOKEN"))
+            subreddit = target.get("subreddit")
+            media_url = target.get("public_base_url")
+            if not endpoint or not token or not subreddit or not media_url:
+                print(
+                    f"skipping {target['id']}: Devvit endpoint, managed token, "
+                    "subreddit or public_base_url missing"
+                )
+                continue
+            publisher = RedditDevvitPublisher(
+                endpoint, token, str(subreddit), str(media_url)
+            )
         elif platform == "x":
             token = os.environ.get(target.get("token_env", "X_USER_ACCESS_TOKEN"))
             if not token:
@@ -344,7 +369,7 @@ def publish_routed_manifest(root: Path) -> dict[str, int]:
         if not selected:
             totals[target["id"]] = 0
             continue
-        if platform in {"instagram", "tiktok", "reddit"} and storage_config:
+        if platform in {"instagram", "tiktok", "reddit", "reddit_devvit"} and storage_config:
             if media_storage is None:
                 from .storage import S3MediaStorage
 
