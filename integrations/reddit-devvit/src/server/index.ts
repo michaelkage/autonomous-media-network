@@ -13,10 +13,15 @@ type DeliveryRecord = {
   post_id?: string;
   permalink?: string;
   updated_at: string;
+  resolution?: "published" | "not_published";
+  resolved_at?: string;
+  resolution_actor?: string;
+  resolution_note?: string;
 };
 
 const app = new Hono();
 const DELIVERY_HASH = "amn:reddit:deliveries";
+const RECONCILIATION_HASH = "amn:reddit:reconciliations";
 const MAX_TITLE_LENGTH = 300;
 
 function jsonRecord(value: string | null | undefined): DeliveryRecord | null {
@@ -247,6 +252,7 @@ app.post("/external/amn/status", async (c) => {
     uniqueIds.map(async (deliveryId) => ({
       delivery_id: deliveryId,
       record: jsonRecord(await redis.hGet(DELIVERY_HASH, deliveryId)),
+      reconciliation: jsonRecord(await redis.hGet(RECONCILIATION_HASH, deliveryId)),
     })),
   );
   return c.json({
@@ -257,6 +263,13 @@ app.post("/external/amn/status", async (c) => {
       post_id: record?.post_id ?? null,
       permalink: record?.permalink ?? null,
       updated_at: record?.updated_at ?? null,
+      reconciliation: record?.resolution
+        ? {
+            resolution: record.resolution,
+            resolved_at: record.resolved_at ?? null,
+            actor: record.resolution_actor ?? null,
+          }
+        : null,
     })),
   });
 });
@@ -266,6 +279,8 @@ type ReconcileRequest = {
   resolution: "published" | "not_published";
   post_id?: string;
   permalink?: string;
+  actor: string;
+  note: string;
 };
 
 app.post("/external/amn/reconcile", async (c) => {
@@ -279,7 +294,14 @@ app.post("/external/amn/reconcile", async (c) => {
     !input ||
     typeof input.delivery_id !== "string" ||
     !/^[a-f0-9]{64}$/.test(input.delivery_id) ||
-    !["published", "not_published"].includes(input.resolution)
+    !["published", "not_published"].includes(input.resolution) ||
+    typeof input.actor !== "string" ||
+    !input.actor.trim() ||
+    input.actor.trim().length > 100 ||
+    typeof input.note !== "string" ||
+    !input.note.trim() ||
+    input.note.trim().length > 500 ||
+    /devvit_at_|\\bbearer\\s/i.test(input.note)
   ) {
     return c.json({ status: "error", error: "invalid_request" }, 400);
   }
@@ -293,28 +315,54 @@ app.post("/external/amn/reconcile", async (c) => {
     return c.json({ status: "error", error: "delivery_still_active" }, 409);
   }
 
+  const resolvedAt = new Date().toISOString();
+  const resolutionAudit = {
+    resolution: input.resolution,
+    resolved_at: resolvedAt,
+    actor: input.actor.trim(),
+    note: input.note.trim(),
+  };
+
   if (input.resolution === "not_published") {
+    await redis.hSet(RECONCILIATION_HASH, {
+      [input.delivery_id]: JSON.stringify(resolutionAudit),
+    });
     await redis.hDel(DELIVERY_HASH, [input.delivery_id]);
     return c.json({ status: "reset", delivery_id: input.delivery_id });
   }
 
+  const normalizedPostId =
+    typeof input.post_id === "string" ? input.post_id.replace(/^t3_/, "") : "";
+  const permalinkMatch =
+    typeof input.permalink === "string"
+      ? /^\\/r\\/([A-Za-z0-9_]+)\\/comments\\/([A-Za-z0-9]+)(?:\\/|$)/i.exec(input.permalink)
+      : null;
   if (
-    typeof input.post_id !== "string" ||
-    !/^[A-Za-z0-9]+$/.test(input.post_id.replace(/^t3_/, "")) ||
-    typeof input.permalink !== "string" ||
-    !input.permalink.startsWith("/r/")
+    !/^[A-Za-z0-9]+$/.test(normalizedPostId) ||
+    !permalinkMatch ||
+    permalinkMatch[2] !== normalizedPostId
   ) {
     return c.json({ status: "error", error: "valid_post_receipt_required" }, 400);
   }
-  const [allowedSubreddit] = await Promise.all([settings.get("allowedSubreddit")]);
-  if (!allowedSubreddit || !input.permalink.startsWith(`/r/${allowedSubreddit}/comments/`)) {
+  const allowedSubreddit = await settings.get("allowedSubreddit");
+  if (
+    !allowedSubreddit ||
+    permalinkMatch[1].toLowerCase() !== allowedSubreddit.toLowerCase()
+  ) {
     return c.json({ status: "error", error: "post_receipt_subreddit_mismatch" }, 400);
   }
+  await redis.hSet(RECONCILIATION_HASH, {
+    [input.delivery_id]: JSON.stringify(resolutionAudit),
+  });
   const resolved: DeliveryRecord = {
     status: "published",
-    post_id: input.post_id.replace(/^t3_/, ""),
+    post_id: normalizedPostId,
     permalink: input.permalink,
-    updated_at: new Date().toISOString(),
+    updated_at: resolvedAt,
+    resolution: "published",
+    resolved_at: resolvedAt,
+    resolution_actor: input.actor.trim(),
+    resolution_note: input.note.trim(),
   };
   await redis.hSet(DELIVERY_HASH, { [input.delivery_id]: JSON.stringify(resolved) });
   return c.json({ status: "published", post_id: resolved.post_id, permalink: resolved.permalink });
