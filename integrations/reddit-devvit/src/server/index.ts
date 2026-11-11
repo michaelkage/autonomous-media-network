@@ -43,6 +43,7 @@ function settingText(value: unknown): string | null {
 
 const DELIVERY_HASH = "amn:reddit:deliveries";
 const RECONCILIATION_HASH = "amn:reddit:reconciliations";
+const RECONCILIATION_AUDIT_HASH = "amn:reddit:reconciliation_audit";
 
 function jsonRecord<T extends { status: string }>(
   value: string | null | undefined,
@@ -320,13 +321,26 @@ app.post("/external/amn/reconcile", async (c) => {
   }
 
   const resolvedAt = new Date().toISOString();
-  const resolutionAudit = {
+  const resolutionAudit: ReconciliationRecord = {
     status: input.resolution,
     resolution: input.resolution,
     resolved_at: resolvedAt,
     actor: input.actor.trim(),
     note: input.note.trim(),
   };
+  const auditEntryId = [
+    input.delivery_id,
+    resolvedAt,
+    crypto.randomUUID(),
+  ].join(":");
+  const auditRecorded = await redis.hSetNX(
+    RECONCILIATION_AUDIT_HASH,
+    auditEntryId,
+    JSON.stringify(resolutionAudit),
+  );
+  if (!auditRecorded) {
+    return c.json({ status: "error", error: "audit_record_conflict" }, 503);
+  }
 
   if (input.resolution === "not_published") {
     await redis.hSet(RECONCILIATION_HASH, {
