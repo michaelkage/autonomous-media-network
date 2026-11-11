@@ -18,6 +18,7 @@ textarea{width:100%;font:13px monospace;background:#0b1017;color:#e8edf4}
 <h1>Autonomous Media Network</h1>
 <section><h2>Workspace</h2><pre id="status">Loading…</pre></section>
 <section><h2>Provider callback health</h2><pre id="deliveryHealth">Loading…</pre></section>
+<section><h2>Reddit Devvit delivery health</h2><pre id="redditDevvitHealth">Loading…</pre></section>
 <section><h2>Delivery timeline</h2><pre id="deliveries">Loading…</pre></section>
 <section><h2>Operator alerts</h2><pre id="operatorAlerts">Loading…</pre></section>
 <section><h2>Instagram reconciliation audit</h2><pre id="instagramAudit">Loading…</pre></section>
@@ -49,6 +50,9 @@ async function load() {
     tiktok_operations: deliveryData.tiktok_operations,
     instagram_operations: deliveryData.instagram_operations
   }, null, 2);
+  document.querySelector("#redditDevvitHealth").textContent = JSON.stringify(
+    deliveryData.reddit_devvit_deliveries, null, 2
+  );
   document.querySelector("#deliveries").textContent = JSON.stringify({
     counts: deliveryData.counts,
     recent: deliveryData.recent
