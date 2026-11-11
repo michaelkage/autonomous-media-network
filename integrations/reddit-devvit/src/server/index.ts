@@ -4,6 +4,7 @@ import {
   isAllowedImageUrl,
   isDeliveryId,
   isSubredditName,
+  isSafeAuditText,
   normalizePostTitle,
   verifyPostReceipt,
 } from "./validation";
