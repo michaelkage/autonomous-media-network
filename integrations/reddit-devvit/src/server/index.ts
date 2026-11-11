@@ -45,7 +45,7 @@ function validImageUrl(value: string, allowedHosts: string[]): boolean {
       !url.password &&
       !url.search &&
       !url.hash &&
-      /\\.(png|jpe?g|webp)$/i.test(url.pathname) &&
+      /\.(png|jpe?g|webp)$/i.test(url.pathname) &&
       allowedHosts.includes(url.hostname.toLowerCase())
     );
   } catch {
@@ -336,7 +336,7 @@ app.post("/external/amn/reconcile", async (c) => {
     typeof input.post_id === "string" ? input.post_id.replace(/^t3_/, "") : "";
   const permalinkMatch =
     typeof input.permalink === "string"
-      ? /^\\/r\\/([A-Za-z0-9_]+)\\/comments\\/([A-Za-z0-9]+)(?:\\/|$)/i.exec(input.permalink)
+      ? /^\/r\/([A-Za-z0-9_]+)\/comments\/([A-Za-z0-9]+)(?:\/|$)/i.exec(input.permalink)
       : null;
   if (
     !/^[A-Za-z0-9]+$/.test(normalizedPostId) ||
