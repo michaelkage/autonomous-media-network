@@ -49,9 +49,10 @@ def _atomic_database_copy(source: Path, destination: Path) -> Path:
     os.close(descriptor)
     temporary = Path(temporary_name)
     try:
-        with closing(sqlite3.connect(source)) as source_db, closing(
-            sqlite3.connect(temporary)
-        ) as target_db:
+        with (
+            closing(sqlite3.connect(source)) as source_db,
+            closing(sqlite3.connect(temporary)) as target_db,
+        ):
             source_db.backup(target_db)
             _validate_connection(target_db)
         with temporary.open("rb") as handle:
@@ -123,7 +124,9 @@ def restore_database(
         from datetime import UTC, datetime
 
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        safety_copy = destination_path.with_name(f"{destination_path.name}.pre-restore-{stamp}.bak")
+        safety_copy = destination_path.with_name(
+            f"{destination_path.name}.pre-restore-{stamp}.bak"
+        )
         suffix = 1
         while safety_copy.exists():
             safety_copy = destination_path.with_name(
