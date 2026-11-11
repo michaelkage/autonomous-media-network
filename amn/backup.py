@@ -53,6 +53,8 @@ def _atomic_database_copy(source: Path, destination: Path) -> Path:
             _validate_connection(target_db)
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
+        Path(f"{destination}-wal").unlink(missing_ok=True)
+        Path(f"{destination}-shm").unlink(missing_ok=True)
         os.replace(temporary, destination)
         try:
             directory_fd = os.open(destination.parent, os.O_RDONLY)
