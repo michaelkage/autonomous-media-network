@@ -235,7 +235,10 @@ def create_app(root: Path = ROOT) -> Any:
         allowed_ids = set(delivery_ids)
         deliveries = []
         for item in payload["deliveries"]:
-            if not isinstance(item, dict) or item.get("delivery_id") not in allowed_ids:
+            if not isinstance(item, dict):
+                continue
+            delivery_id = item.get("delivery_id")
+            if not isinstance(delivery_id, str) or delivery_id not in allowed_ids:
                 continue
             status = item.get("status")
             post_id = item.get("post_id")
@@ -243,8 +246,8 @@ def create_app(root: Path = ROOT) -> Any:
             updated_at = item.get("updated_at")
             deliveries.append(
                 {
-                    "delivery_id": item["delivery_id"],
-                    "status": status if status in {
+                    "delivery_id": delivery_id,
+                    "status": status if isinstance(status, str) and status in {
                         "uploading",
                         "submitting",
                         "published",
