@@ -55,6 +55,48 @@ def _incidents(
                     ),
                 }
 
+        if _table_exists(db, "jobs"):
+            for row in db.execute(
+                """
+                SELECT id, kind, status, updated_at, lease_until
+                FROM jobs
+                WHERE (
+                    status = 'running'
+                    AND lease_until IS NOT NULL
+                    AND lease_until <= ?
+                ) OR (
+                    status = 'pending'
+                    AND available_at <= ?
+                    AND updated_at <= ?
+                )
+                ORDER BY updated_at ASC
+                LIMIT 100
+                """,
+                (now, now, now - stale_after_seconds),
+            ):
+                job_id = str(row["id"])
+                kind = str(row["kind"])
+                if row["status"] == "running":
+                    expired_for = max(0, int(now - float(row["lease_until"])))
+                    incidents[f"job-lease-expired:{job_id}"] = {
+                        "kind": "job_lease_expired",
+                        "message": (
+                            f"AMN worker lease expired for {kind} job {job_id[:8]} "
+                            f"({expired_for // 60} minutes ago). Check worker health and "
+                            "confirm the job is reclaimed."
+                        ),
+                    }
+                else:
+                    age = max(0, int(now - float(row["updated_at"])))
+                    incidents[f"job-queue-stalled:{job_id}"] = {
+                        "kind": "job_queue_stalled",
+                        "message": (
+                            f"AMN {kind} job {job_id[:8]} has been ready for "
+                            f"{age // 60} minutes without being claimed. Check worker "
+                            "availability and queue throughput."
+                        ),
+                    }
+
         if _table_exists(db, "tiktok_publish_operations"):
             for row in db.execute(
                 "SELECT publish_id, updated_at FROM tiktok_publish_operations "
