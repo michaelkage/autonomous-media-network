@@ -447,6 +447,11 @@ def test_dashboard_fetches_authenticated_reddit_provider_state(
     assert result["configured"] is True
     assert result["deliveries"][0]["status"] == "published"
     assert result["deliveries"][0]["post_id"] == "provider123"
+    assert result["deliveries"][0]["reconciliation"] == {
+        "resolution": "published",
+        "resolved_at": "2026-11-11T09:01:00.000Z",
+        "actor": "operator@example",
+    }
     assert calls["url"].endswith("/external/amn/status")
     assert calls["headers"]["Authorization"] == "bearer devvit_at_private"
     assert calls["json"] == {"delivery_ids": [delivery_id]}
