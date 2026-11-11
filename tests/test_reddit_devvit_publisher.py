@@ -119,7 +119,7 @@ def test_devvit_bridge_requires_https_and_managed_token() -> None:
 def test_devvit_bridge_rejects_files_over_reddit_upload_limit(tmp_path: Path) -> None:
     image = tmp_path / "oversized.jpg"
     with image.open("wb") as handle:
-        handle.truncate(20 * 1024 * 1024 + 1)
+        handle.truncate(20_000_001)
     publisher = _publisher()
     publisher.session.post = MagicMock()
 
