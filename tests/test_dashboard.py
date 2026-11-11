@@ -353,3 +353,38 @@ def test_dashboard_exposes_reddit_devvit_delivery_receipts_and_stalled_attempts(
     assert payload["recent"][1]["latest_event"] == "published"
     assert "delivery-one" not in json.dumps(payload)
     assert "Reddit Devvit delivery health" in client.get("/").text
+
+
+def test_dashboard_reddit_devvit_summary_reads_legacy_delivery_schema(tmp_path: Path) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    database.parent.mkdir()
+    with sqlite3.connect(database) as db:
+        db.execute(
+            """
+            CREATE TABLE delivery_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                delivery_id TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                output TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                attempt INTEGER NOT NULL,
+                will_retry INTEGER NOT NULL DEFAULT 0,
+                retry_after_seconds REAL,
+                created_at REAL NOT NULL
+            )
+            """
+        )
+        db.execute(
+            "INSERT INTO delivery_events "
+            "(delivery_id, platform, output, event_type, attempt, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("d" * 64, "reddit_devvit", "outbox/legacy.jpg", "published", 1, time.time()),
+        )
+
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+    response = client.get("/api/deliveries")
+
+    assert response.status_code == 200
+    summary = response.json()["reddit_devvit_deliveries"]
+    assert summary["counts"]["published"] == 1
+    assert summary["recent"][0]["provider_message_id"] is None
