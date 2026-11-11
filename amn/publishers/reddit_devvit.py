@@ -84,6 +84,8 @@ class RedditDevvitPublisher(Publisher):
             image_path = Path(image_path)
             if not image_path.is_file():
                 raise FileNotFoundError("Reddit media asset is missing")
+            if image_path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+                raise ValueError("Reddit Devvit supports PNG, JPEG, and WEBP images only")
             if image_path.stat().st_size > 20 * 1024 * 1024:
                 raise ValueError("Reddit Devvit image uploads are limited to 20 MiB")
             delivery_id = getattr(self, "_amn_delivery_id", self.delivery_id)
