@@ -41,7 +41,7 @@ Submit the app for Reddit review with `npx devvit publish` only after external e
 
 ## Ambiguous native image submissions
 
-Reddit may create native image posts asynchronously and fail to return a post ID in the initial submission response. The bridge treats any uncertain submit outcome as unresolved and retains its Redis reservation. An operator must independently inspect the subreddit and call the authenticated `/external/amn/reconcile` endpoint with a verified post receipt, or explicitly confirm that no post exists before resetting the reservation. Never clear an unresolved reservation merely to force a retry.
+Reddit may create native image posts asynchronously and fail to return a post ID in the initial submission response. After any ambiguous submission error, the bridge first checks a bounded window of the subreddit's newest posts for the unique Reddit-hosted media URL uploaded for this delivery. If found, it recovers and stores the post receipt. If the lookup cannot prove the result, the bridge retains its Redis reservation and marks the delivery unresolved. An operator must independently inspect the subreddit and call the authenticated `/external/amn/reconcile` endpoint with a verified post receipt, or explicitly confirm that no post exists before resetting the reservation. Never clear an unresolved reservation merely to force a retry.
 
 The bridge posts as the Devvit app account. It does not publish as the Reddit user who installed the app.
 
