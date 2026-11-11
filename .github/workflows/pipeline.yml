@@ -47,7 +47,7 @@ jobs:
       # Publishing is irreversible: a post cannot be un-shared, only deleted.
       # Off unless AMN_PUBLISH is explicitly enabled.
       - name: Publish to Bluesky
-        if: vars.AMN_PUBLISH == 'true'
+        if: steps.vet.outputs.exit_code == '0' && vars.AMN_PUBLISH == 'true'
         env:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
