@@ -56,9 +56,7 @@ def _incidents(
                 }
 
         if _table_exists(db, "jobs"):
-            job_columns = {
-                str(row["name"]) for row in db.execute("PRAGMA table_info(jobs)")
-            }
+            job_columns = {str(row["name"]) for row in db.execute("PRAGMA table_info(jobs)")}
             if {"available_at", "lease_until", "updated_at"}.issubset(job_columns):
                 for row in db.execute(
                     """
