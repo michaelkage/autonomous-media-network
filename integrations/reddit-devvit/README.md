@@ -14,13 +14,14 @@ Reddit currently marks external endpoints as a limited-access feature. Request a
 4. Devvit uploads the image to Reddit media hosting and submits an image post as the app account.
 5. The endpoint stores and returns the Reddit post ID and permalink.
 6. Duplicate requests return the stored receipt. Ambiguous submissions are not retried automatically.
+7. The authenticated `/external/amn/status` endpoint returns provider-side state and latest reconciliation metadata for up to 50 delivery IDs.
 
-Each subreddit installation has its own Redis namespace. Configure AMN to call the endpoint URL for the installation that owns the target subreddit.
+Each subreddit installation has its own Redis namespace. Configure AMN to call the endpoint URL for the installation that owns the target subreddit. AMN's loopback dashboard proxies provider status through `GET /api/reddit-devvit/status`; the managed token remains server-side.
 
 ## Configure
 
 - Install the app in the target subreddit as a moderator.
-- Set the global app settings `allowedSubreddit` and `allowedMediaHosts`. The latter is a comma-separated list of exact hostnames, without scheme, port, or path.
+- Set the installation-scoped `allowedSubreddit` setting and the app-wide `allowedMediaHosts` setting. The latter is a comma-separated list of exact hostnames, without scheme, port, or path.
 - In Developer Settings, create a managed app token and store its secret in AMN's `AMN_REDDIT_DEVVIT_TOKEN` environment variable.
 - Set `AMN_REDDIT_DEVVIT_URL` to the installation-specific global endpoint URL ending in `/external/amn/publish`.
 - Keep the endpoint token out of configuration files, logs, issue reports, and source control.
