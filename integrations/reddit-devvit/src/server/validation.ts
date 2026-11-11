@@ -8,6 +8,14 @@ export type VerifiedPostReceipt = {
   permalink: string;
 };
 
+export type ReconciliationIntent = {
+  resolution: "published" | "not_published";
+  actor: string;
+  note: string;
+  post_id?: string;
+  permalink?: string;
+};
+
 export function isDeliveryId(value: unknown): value is string {
   return typeof value === "string" && DELIVERY_ID_PATTERN.test(value);
 }
@@ -31,6 +39,24 @@ export function isReconciliationEligible(status: unknown): status is "unknown" {
   // Only "unknown" is persisted after submitPost and recovery lookup have
   // completed. Resetting "uploading" or "submitting" can race a live request.
   return status === "unknown";
+}
+
+export function matchesReconciliationIntent(
+  value: unknown,
+  expected: ReconciliationIntent,
+): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.status === expected.resolution &&
+    candidate.resolution === expected.resolution &&
+    candidate.actor === expected.actor &&
+    candidate.note === expected.note &&
+    (candidate.post_id ?? undefined) === expected.post_id &&
+    (candidate.permalink ?? undefined) === expected.permalink &&
+    typeof candidate.resolved_at === "string" &&
+    Number.isFinite(Date.parse(candidate.resolved_at))
+  );
 }
 
 export function normalizePostTitle(value: string, fallback: string): string {
