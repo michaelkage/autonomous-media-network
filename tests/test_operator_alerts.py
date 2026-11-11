@@ -178,3 +178,70 @@ def test_alerts_can_run_from_the_durable_schedule_worker(tmp_path: Path, monkeyp
     assert len(messages) == 1
     assert "AMN job permanently failed" in messages[0]
     assert queue.counts()["succeeded"] == 1
+
+def test_stalled_queue_jobs_and_expired_leases_are_alerted(tmp_path: Path, monkeypatch) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    queue = JobQueue(database)
+    expired_id = queue.enqueue("publish", max_attempts=3)
+    queued_id = queue.enqueue("fetch", max_attempts=3)
+    assert queue.claim("worker-that-disappeared", lease_seconds=30) is not None
+
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "UPDATE jobs SET lease_until = 900, updated_at = 800 WHERE id = ?",
+            (expired_id,),
+        )
+        db.execute(
+            "UPDATE jobs SET available_at = 1, updated_at = 800 WHERE id = ?",
+            (queued_id,),
+        )
+
+    messages: list[str] = []
+    monkeypatch.setattr(
+        "amn.operator_alerts._send_telegram",
+        lambda token, chat, message, timeout: messages.append(message),
+    )
+
+    result = check_operator_alerts(
+        database,
+        bot_token="token",
+        chat_id="@ops",
+        stale_after_seconds=60,
+        now=1000,
+    )
+
+    assert result["active"] == 2
+    assert result["sent"] == 2
+    assert any("worker lease expired" in message for message in messages)
+    assert any("ready for 3 minutes" in message for message in messages)
+    assert expired_id[:8] in " ".join(messages)
+    assert queued_id[:8] in " ".join(messages)
+
+
+def test_pending_jobs_not_yet_available_do_not_trigger_stall_alert(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database = tmp_path / "build" / "jobs.sqlite3"
+    queue = JobQueue(database)
+    job_id = queue.enqueue("fetch", delay=3600)
+    with sqlite3.connect(database) as db:
+        db.execute("UPDATE jobs SET updated_at = 1 WHERE id = ?", (job_id,))
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "amn.operator_alerts._send_telegram",
+        lambda token, chat, message, timeout: calls.append(message),
+    )
+
+    result = check_operator_alerts(
+        database,
+        bot_token="token",
+        chat_id="@ops",
+        stale_after_seconds=60,
+        now=1000,
+    )
+
+    assert result["active"] == 0
+    assert result["sent"] == 0
+    assert calls == []
+
