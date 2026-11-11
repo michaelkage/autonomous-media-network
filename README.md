@@ -152,6 +152,26 @@ AMN_ROOT="$PWD" AMN_WATERMARK_TEXT="@yourhandle" amn-dashboard --host 127.0.0.1 
 
 Open `http://127.0.0.1:8765`. The optional FastAPI dashboard exposes workspace counts, recent rejection reasons, durable job counts and recent job states, recurring schedule status and next-run times, a redacted configuration view, validated local config updates, and a pipeline trigger. It binds to loopback only, rejects non-loopback Host headers and cross-origin requests, and prevents overlapping pipeline runs. API secrets stay in environment variables and are never returned by the config endpoint. Do not expose it to a network without adding authentication and TLS.
 
+## Native Reddit image publishing (Devvit)
+
+The standard Reddit Data API publisher creates link posts pointing to hosted images. For native Reddit image posts, AMN includes an optional Devvit bridge in `integrations/reddit-devvit/`. It is a separate Reddit app runtime, not a replacement for the existing OAuth ingestion or link-post publisher.
+
+The bridge requires Reddit approval for limited-access external endpoints, installation by a moderator in each target subreddit, and a managed Devvit app token. It publishes as the Devvit app account. Configure the installation-specific publish endpoint in `AMN_REDDIT_DEVVIT_URL`, the managed token in `AMN_REDDIT_DEVVIT_TOKEN`, and an exact public-media hostname allowlist in the Devvit app settings. The AMN dashboard can display provider-side delivery status when those environment variables are configured.
+
+Build and validate the bridge from its directory:
+
+```bash
+cd integrations/reddit-devvit
+npm install
+npm run typecheck
+npm test
+npm run build
+npx devvit login
+npm run playtest
+```
+
+Do not run `npx devvit publish` until Reddit has granted external-endpoint access and the app has passed an authenticated playtest. Delivery reservations fail closed when a submission is ambiguous; operators must independently verify the subreddit and use the authenticated reconciliation endpoint. Reconciliation events are retained in an append-only Redis audit hash. Reddit's current media API does not expose deletion for uploaded assets, so failed or ambiguous submissions may leave unused hosted media behind. See [the Devvit bridge guide](integrations/reddit-devvit/README.md) for installation, settings, and recovery details.
+
 ## Security and operational notes
 
 - Use dedicated platform bot/app credentials with the minimum scopes.
