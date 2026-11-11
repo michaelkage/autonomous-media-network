@@ -114,3 +114,14 @@ def test_devvit_bridge_requires_https_and_managed_token() -> None:
             "earthporn",
             "https://cdn.example.com/outbox",
         )
+
+
+def test_devvit_bridge_rejects_files_over_reddit_upload_limit(tmp_path: Path) -> None:
+    image = tmp_path / "oversized.jpg"
+    with image.open("wb") as handle:
+        handle.truncate(20 * 1024 * 1024 + 1)
+    publisher = _publisher()
+    publisher.session.post = MagicMock()
+
+    assert publisher.publish(image, "caption") is False
+    publisher.session.post.assert_not_called()
