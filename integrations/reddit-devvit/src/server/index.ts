@@ -9,7 +9,7 @@ type PublishRequest = {
 };
 
 type DeliveryRecord = {
-  status: "processing" | "published" | "unknown" | "failed";
+  status: "processing" | "published" | "unknown";
   post_id?: string;
   permalink?: string;
   updated_at: string;
@@ -19,7 +19,7 @@ const app = new Hono();
 const DELIVERY_HASH = "amn:reddit:deliveries";
 const MAX_TITLE_LENGTH = 300;
 
-function jsonRecord(value: string | null): DeliveryRecord | null {
+function jsonRecord(value: string | null | undefined): DeliveryRecord | null {
   if (!value) return null;
   try {
     const parsed: unknown = JSON.parse(value);
@@ -127,12 +127,9 @@ app.post("/external/amn/publish", async (c) => {
     uploaded = await media.upload({ url: input.image_url, type: "image" });
     if (!uploaded.mediaUrl) throw new Error("Reddit media upload returned no URL");
   } catch {
-    await redis.hSet(DELIVERY_HASH, {
-      [input.delivery_id]: JSON.stringify({
-        status: "failed",
-        updated_at: new Date().toISOString(),
-      } satisfies DeliveryRecord),
-    });
+    // No Reddit post has been submitted yet, so releasing the reservation is
+    // safe and lets AMN retry a transient media-hosting failure.
+    await redis.hDel(DELIVERY_HASH, [input.delivery_id]);
     return c.json({ status: "error", error: "media_upload_failed" }, 502);
   }
 
