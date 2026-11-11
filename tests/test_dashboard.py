@@ -301,3 +301,55 @@ def test_dashboard_exposes_instagram_reconciliation_audit(tmp_path: Path) -> Non
     assert audit[0]["actor"] == "dashboard-test"
     assert "Verified the post is live" in audit[0]["note"]
     assert "Instagram reconciliation audit" in client.get("/").text
+
+
+def test_dashboard_exposes_reddit_devvit_delivery_receipts_and_stalled_attempts(
+    tmp_path: Path,
+) -> None:
+    from amn.delivery_events import record_delivery_event
+
+    database = tmp_path / "build" / "jobs.sqlite3"
+    record_delivery_event(
+        database,
+        platform="reddit_devvit",
+        delivery_key="delivery-one",
+        output="outbox/one.jpg",
+        event_type="attempt_started",
+        attempt=1,
+    )
+    record_delivery_event(
+        database,
+        platform="reddit_devvit",
+        delivery_key="delivery-one",
+        output="outbox/one.jpg",
+        event_type="published",
+        attempt=1,
+        provider_message_id="reddit-post-123",
+    )
+    record_delivery_event(
+        database,
+        platform="reddit_devvit",
+        delivery_key="delivery-two",
+        output="outbox/two.jpg",
+        event_type="provider_accepted",
+        attempt=1,
+        provider_message_id="reddit-post-ambiguous",
+    )
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "UPDATE delivery_events SET created_at = ? WHERE delivery_id = "
+            "(SELECT delivery_id FROM delivery_events WHERE output = 'outbox/two.jpg' LIMIT 1)",
+            (time.time() - 3600,),
+        )
+
+    client = TestClient(create_app(tmp_path), base_url="http://127.0.0.1")
+    response = client.get("/api/deliveries?stale_after_seconds=900")
+
+    assert response.status_code == 200
+    payload = response.json()["reddit_devvit_deliveries"]
+    assert payload["counts"]["published"] == 1
+    assert payload["stalled"] == 1
+    assert payload["recent"][0]["provider_message_id"] == "reddit-post-ambiguous"
+    assert payload["recent"][1]["latest_event"] == "published"
+    assert "delivery-one" not in json.dumps(payload)
+    assert "Reddit Devvit delivery health" in client.get("/").text
