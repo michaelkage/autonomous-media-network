@@ -142,6 +142,23 @@ amn jobs worker --root .
 
 Invoke `amn jobs schedule tick --root .` periodically from cron/systemd (for example, once per minute). The alert job runs in the same durable queue as fetch, pipeline, and publish work. The dashboard's Operator alerts section and `GET /api/alerts` expose sanitized active/resolved history. Telegram credentials are not read from the AMN JSON config.
 
+### Queue backup and recovery
+
+The durable queue, recurring schedules, delivery-operation state, and operator-alert history live in `build/jobs.sqlite3`. Use SQLite's online backup API through the AMN CLI to capture a consistent snapshot, including committed WAL contents:
+
+```bash
+amn jobs backup --output ./backups/amn-$(date -u +%Y%m%dT%H%M%SZ).sqlite3 --root .
+amn jobs verify-backup --input ./backups/amn-YYYYMMDDTHHMMSSZ.sqlite3 --root .
+```
+
+Before restoring, stop every AMN worker and scheduler process. Restore validates SQLite integrity and the AMN queue schema, refuses to overwrite a database with active job leases, and creates a timestamped pre-restore safety copy automatically:
+
+```bash
+amn jobs restore --input ./backups/amn-YYYYMMDDTHHMMSSZ.sqlite3 --confirm-no-workers --root .
+```
+
+Keep backups outside the workspace's ignored runtime directories and copy them to durable storage on a separate host or account. A backup on the same disk is not disaster recovery. Periodically verify a backup and perform a restore drill against a disposable workspace; never test recovery against the live queue.
+
 GitHub Actions Telegram publishing is separately opt-in. Add repository secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, then set repository variable `AMN_TELEGRAM_PUBLISH=true`. The workflow maps those secrets into the publishing step explicitly and fails that step if publishing is enabled but either secret is missing. Keep this publishing chat distinct from `TELEGRAM_ALERT_CHAT_ID`.
 
 ## Diagnostics dashboard
