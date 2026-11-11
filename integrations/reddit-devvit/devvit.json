@@ -3,7 +3,7 @@
   "name": "amn-media-bridge",
   "server": {
     "dir": "dist/server",
-    "entry": "index.js",
+    "entry": "index.cjs",
     "externalEndpoints": {
       "amnPublish": {
         "endpoint": "/external/amn/publish",
