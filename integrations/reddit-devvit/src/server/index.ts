@@ -9,7 +9,7 @@ type PublishRequest = {
 };
 
 type DeliveryRecord = {
-  status: "uploading" | "submitting" | "published" | "unknown" | "not_published";
+  status: "uploading" | "submitting" | "published" | "unknown";
   post_id?: string;
   permalink?: string;
   updated_at: string;
@@ -19,17 +19,27 @@ type DeliveryRecord = {
   resolution_note?: string;
 };
 
+type ReconciliationRecord = {
+  status: "published" | "not_published";
+  resolution: "published" | "not_published";
+  resolved_at: string;
+  actor: string;
+  note: string;
+};
+
 const app = new Hono();
 const DELIVERY_HASH = "amn:reddit:deliveries";
 const RECONCILIATION_HASH = "amn:reddit:reconciliations";
 const MAX_TITLE_LENGTH = 300;
 
-function jsonRecord(value: string | null | undefined): DeliveryRecord | null {
+function jsonRecord<T extends { status: string }>(
+  value: string | null | undefined,
+): T | null {
   if (!value) return null;
   try {
     const parsed: unknown = JSON.parse(value);
     if (typeof parsed !== "object" || parsed === null || !("status" in parsed)) return null;
-    return parsed as DeliveryRecord;
+    return parsed as T;
   } catch {
     return null;
   }
@@ -251,8 +261,10 @@ app.post("/external/amn/status", async (c) => {
   const records = await Promise.all(
     uniqueIds.map(async (deliveryId) => ({
       delivery_id: deliveryId,
-      record: jsonRecord(await redis.hGet(DELIVERY_HASH, deliveryId)),
-      reconciliation: jsonRecord(await redis.hGet(RECONCILIATION_HASH, deliveryId)),
+      record: jsonRecord<DeliveryRecord>(await redis.hGet(DELIVERY_HASH, deliveryId)),
+      reconciliation: jsonRecord<ReconciliationRecord>(
+        await redis.hGet(RECONCILIATION_HASH, deliveryId),
+      ),
     })),
   );
   return c.json({
@@ -301,7 +313,7 @@ app.post("/external/amn/reconcile", async (c) => {
     typeof input.note !== "string" ||
     !input.note.trim() ||
     input.note.trim().length > 500 ||
-    /devvit_at_|\\bbearer\\s/i.test(input.note)
+    /devvit_at_|\bbearer\s/i.test(input.note)
   ) {
     return c.json({ status: "error", error: "invalid_request" }, 400);
   }
