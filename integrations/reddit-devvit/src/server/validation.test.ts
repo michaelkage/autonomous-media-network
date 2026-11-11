@@ -30,7 +30,7 @@ describe("Devvit request validation", () => {
     expect(isSafeAuditText("a".repeat(101), 100)).toBe(false);
     expect(isSafeAuditText("devvit_at_private", 100)).toBe(false);
     expect(isSafeAuditText("Bearer secret-token", 100)).toBe(false);
-    expect(isSafeAuditText("operator\\nforged-entry", 100)).toBe(false);
+    expect(isSafeAuditText("operator\nforged-entry", 100)).toBe(false);
     expect(isSafeAuditText("   ", 100)).toBe(false);
     expect(isSafeAuditText(null, 100)).toBe(false);
   });
