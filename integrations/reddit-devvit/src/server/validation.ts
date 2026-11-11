@@ -50,9 +50,10 @@ export function verifyPostReceipt(
     return null;
   }
 
-  const match = /^\/r\/([A-Za-z0-9_]+)\/comments\/([A-Za-z0-9]+)(?:\/|$)/i.exec(
-    permalink,
-  );
+  const match =
+    /^\/r\/([A-Za-z0-9_]+)\/comments\/([A-Za-z0-9]+)(?:\/[^/?#]*)?\/?$/i.exec(
+      permalink,
+    );
   if (
     !match ||
     match[1].toLowerCase() !== allowedSubreddit.toLowerCase() ||
