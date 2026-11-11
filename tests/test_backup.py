@@ -105,3 +105,28 @@ def test_backup_cli_and_restore_cli(tmp_path: Path, capsys) -> None:
         == 0
     )
     assert "pre-restore safety copy" in capsys.readouterr().out
+
+
+def test_verify_backup_does_not_create_workspace_queue(tmp_path: Path) -> None:
+    from amn.pipeline import main
+
+    source = tmp_path / "source.sqlite3"
+    JobQueue(source)
+    backup = tmp_path / "backup.sqlite3"
+    backup_database(source, backup)
+    workspace = tmp_path / "workspace"
+
+    assert (
+        main(
+            [
+                "jobs",
+                "verify-backup",
+                "--input",
+                str(backup),
+                "--root",
+                str(workspace),
+            ]
+        )
+        == 0
+    )
+    assert not (workspace / "build" / "jobs.sqlite3").exists()
