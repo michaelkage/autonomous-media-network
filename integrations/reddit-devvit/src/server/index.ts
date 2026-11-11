@@ -117,6 +117,15 @@ app.post("/external/amn/publish", async (c) => {
     return c.json({ status: "reconciliation_required" }, 409);
   }
 
+  // A negative reconciliation deletes the old reservation before releasing
+  // its claim. Do not let a new attempt enter that narrow completion window.
+  const reconciliationClaim = jsonRecord<ReconciliationClaim>(
+    await redis.hGet(RECONCILIATION_CLAIMS_HASH, input.delivery_id),
+  );
+  if (reconciliationClaim) {
+    return c.json({ status: "reconciliation_in_progress" }, 409);
+  }
+
   const record: DeliveryRecord = {
     status: "uploading",
     updated_at: new Date().toISOString(),
