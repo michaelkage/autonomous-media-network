@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -104,6 +103,8 @@ class RedditDevvitPublisher(Publisher):
                 timeout=self.timeout,
             )
             self.retry_after = _retry_after_from_response(response)
+            if response.status_code == 409 or response.status_code == 202:
+                self.retry_after = max(self.retry_after or 0, 3600)
             response.raise_for_status()
             body = response.json()
             if not isinstance(body, dict):
