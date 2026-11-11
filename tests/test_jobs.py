@@ -299,3 +299,34 @@ def test_sub_microsecond_schedule_intervals_do_not_collide(tmp_path: Path) -> No
     assert next_run > 1000
     assert queue.enqueue_due_schedules(now=next_run) == 1
     assert queue.counts()["pending"] == 2
+
+
+@pytest.mark.parametrize("operation", ["heartbeat", "complete", "fail"])
+def test_expired_lease_rejects_stale_worker_mutations(
+    tmp_path: Path, monkeypatch, operation: str
+) -> None:
+    import amn.jobs
+
+    clock = [1_000.0]
+    monkeypatch.setattr(amn.jobs.time, "time", lambda: clock[0])
+    queue = JobQueue(tmp_path / "jobs.sqlite3")
+    job_id = queue.enqueue("publish")
+    claimed = queue.claim("worker-a", lease_seconds=10)
+
+    assert claimed is not None
+    clock[0] = 1_010.0
+
+    if operation == "heartbeat":
+        accepted = queue.heartbeat(job_id, "worker-a", lease_seconds=30)
+    elif operation == "complete":
+        accepted = queue.complete(job_id, "worker-a")
+    else:
+        accepted = queue.fail(job_id, "worker-a", "late failure", retry_delay=0)
+
+    assert accepted is False
+    assert queue.get(job_id)["status"] == "running"
+
+    recovered = queue.claim("worker-b", lease_seconds=30)
+    assert recovered is not None
+    assert recovered["id"] == job_id
+    assert recovered["worker_id"] == "worker-b"
