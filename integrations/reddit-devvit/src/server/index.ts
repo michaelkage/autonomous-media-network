@@ -362,6 +362,9 @@ app.post("/external/amn/reconcile", async (c) => {
     return c.json({ status: "reset", delivery_id: input.delivery_id });
   }
 
+  if (!receipt) {
+    return c.json({ status: "error", error: "valid_post_receipt_required" }, 400);
+  }
   await redis.hSet(RECONCILIATION_HASH, {
     [input.delivery_id]: JSON.stringify(resolutionAudit),
   });
