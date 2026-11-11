@@ -147,8 +147,10 @@ Invoke `amn jobs schedule tick --root .` periodically from cron/systemd (for exa
 The durable queue, recurring schedules, delivery-operation state, and operator-alert history live in `build/jobs.sqlite3`. Use SQLite's online backup API through the AMN CLI to capture a consistent snapshot, including committed WAL contents:
 
 ```bash
-amn jobs backup --output ./backups/amn-$(date -u +%Y%m%dT%H%M%SZ).sqlite3 --root .
-amn jobs verify-backup --input ./backups/amn-YYYYMMDDTHHMMSSZ.sqlite3 --root .
+mkdir -p backups
+BACKUP="./backups/amn-$(date -u +%Y%m%dT%H%M%SZ).sqlite3"
+amn jobs backup --output "$BACKUP" --root .
+amn jobs verify-backup --input "$BACKUP" --root .
 ```
 
 Before restoring, stop every AMN worker and scheduler process. Restore validates SQLite integrity and the AMN queue schema, refuses to overwrite a database with active job leases, and creates a timestamped pre-restore safety copy automatically:
