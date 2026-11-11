@@ -52,9 +52,7 @@ def test_restore_requires_explicit_worker_shutdown_and_keeps_safety_copy(
     with pytest.raises(ValueError, match="confirm-no-workers"):
         restore_database(snapshot, destination)
 
-    restored, safety_copy = restore_database(
-        snapshot, destination, confirm_no_workers=True
-    )
+    restored, safety_copy = restore_database(snapshot, destination, confirm_no_workers=True)
 
     assert restored == destination.resolve()
     assert safety_copy is not None and safety_copy.is_file()
