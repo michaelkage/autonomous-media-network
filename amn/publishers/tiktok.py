@@ -147,7 +147,7 @@ class TikTokPublisher(Publisher):
         if not isinstance(error, dict):
             raise RuntimeError("TikTok returned a malformed error response")
         data = result.get("data")
-        if data is not None and not isinstance(data, dict):
+        if not isinstance(data, dict):
             raise RuntimeError("TikTok returned malformed response data")
         if error.get("code") not in {None, "", "ok"}:
             raise RuntimeError(f"TikTok API {error.get('code')}: {error.get('message', '')}")
@@ -297,7 +297,8 @@ class TikTokPublisher(Publisher):
             raise RuntimeError("TikTok post is still processing; recovery will resume polling")
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
             response = exc.response if isinstance(exc, requests.RequestException) else None
-            self.retry_after = _retry_after_from_response(response)
+            if response is not None:
+                self.retry_after = _retry_after_from_response(response)
             message = str(exc).replace(self.token, "[REDACTED]")[:300]
             print(f"TikTok publish failed: {message}")
             return False
