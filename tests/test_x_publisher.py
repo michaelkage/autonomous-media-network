@@ -93,6 +93,7 @@ def test_x_rejects_malformed_media_upload_response(tmp_path: Path) -> None:
     assert publisher.publish(image, "caption") is False
     publisher.session.post.assert_called_once()
 
+
 def test_x_rejects_non_jpeg_before_network_call(tmp_path: Path) -> None:
     image = tmp_path / "photo.png"
     image.write_bytes(b"image-bytes")
