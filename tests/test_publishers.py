@@ -562,3 +562,37 @@ def test_instagram_rejects_non_object_media_publish_response(tmp_path: Path) -> 
     publisher.session.get = MagicMock(return_value=_response({"status_code": "FINISHED"}))
 
     assert publisher.publish(image, "caption") is False
+
+
+
+def test_tiktok_missing_media_asset_returns_failure_without_raising(tmp_path: Path) -> None:
+    publisher = TikTokPublisher(
+        "test-access-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+    )
+    publisher.session.post = MagicMock()
+
+    assert publisher.publish(tmp_path / "missing.jpg", "caption") is False
+    publisher.session.post.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("options", "value"),
+    [
+        ({"timeout": 0}, ValueError),
+        ({"poll_interval": -1}, ValueError),
+        ({"max_polls": -1}, ValueError),
+        ({"max_polls": True}, ValueError),
+    ],
+)
+def test_tiktok_rejects_invalid_polling_configuration(options: dict, value: type[Exception]) -> None:
+    with pytest.raises(value):
+        TikTokPublisher(
+            "test-access-token",
+            "https://media.example.com/outbox",
+            "SELF_ONLY",
+            direct_post_enabled=True,
+            **options,
+        )
