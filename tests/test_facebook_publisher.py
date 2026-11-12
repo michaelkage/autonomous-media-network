@@ -137,4 +137,3 @@ def test_facebook_page_rejects_empty_jpeg_before_network_call(tmp_path: Path) ->
 
     assert publisher.publish(image, "caption") is False
     publisher.session.post.assert_not_called()
-
