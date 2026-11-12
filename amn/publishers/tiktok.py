@@ -136,7 +136,14 @@ class TikTokPublisher(Publisher):
         )
         response.raise_for_status()
         result = response.json()
-        error = result.get("error", {})
+        if not isinstance(result, dict):
+            raise RuntimeError("TikTok returned an invalid response")
+        error = result.get("error") or {}
+        if not isinstance(error, dict):
+            raise RuntimeError("TikTok returned a malformed error response")
+        data = result.get("data")
+        if data is not None and not isinstance(data, dict):
+            raise RuntimeError("TikTok returned malformed response data")
         if error.get("code") not in {None, "", "ok"}:
             raise RuntimeError(f"TikTok API {error.get('code')}: {error.get('message', '')}")
         return result
