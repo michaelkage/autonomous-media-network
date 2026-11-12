@@ -55,7 +55,10 @@ class InstagramPublisher(Publisher):
             or not math.isfinite(poll_interval)
             or poll_interval < 0
         ):
-            raise ValueError("timeout must be positive and poll_interval must be non-negative; both must be finite numbers")
+            raise ValueError(
+                "timeout must be positive and poll_interval must be non-negative; "
+                "both must be finite numbers"
+            )
         self.token, self.user_id = access_token, instagram_user_id
         self.public_base_url = public_base_url.rstrip("/")
         self.base = f"https://graph.facebook.com/{api_version}"
