@@ -112,6 +112,10 @@ class TikTokPublisher(Publisher):
             raise ValueError("TikTok privacy_level must be explicitly configured")
         if not direct_post_enabled:
             raise ValueError("TikTok direct posting requires explicit direct_post_enabled=true")
+        if timeout <= 0 or poll_interval < 0:
+            raise ValueError("timeout must be positive and poll_interval cannot be negative")
+        if isinstance(max_polls, bool) or not isinstance(max_polls, int) or max_polls < 0:
+            raise ValueError("max_polls must be a non-negative integer")
         self.token, self.public_base_url = access_token, public_base_url.rstrip("/")
         self.privacy_level = privacy_level
         self.timeout, self.poll_interval, self.max_polls = timeout, poll_interval, max_polls
@@ -224,12 +228,14 @@ class TikTokPublisher(Publisher):
 
     def publish(self, image_path: Path, caption: str) -> bool:
         self.retry_after = None
-        if image_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
-            print("TikTok photo posts require a supported image")
-            return False
-        photo_url = f"{self.public_base_url}/{quote(image_path.name)}"
-        operation_key = self._operation_key(image_path, photo_url, caption)
+        image_path = Path(image_path)
         try:
+            if not image_path.is_file():
+                raise FileNotFoundError("TikTok media asset is missing")
+            if image_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+                raise ValueError("TikTok photo posts require a supported image")
+            photo_url = f"{self.public_base_url}/{quote(image_path.name)}"
+            operation_key = self._operation_key(image_path, photo_url, caption)
             operation = self._load_operation(operation_key)
             if operation and operation[1] == "complete":
                 return True
@@ -242,6 +248,10 @@ class TikTokPublisher(Publisher):
             else:
                 creator = self._request("post/publish/creator_info/query", {})
                 options = creator.get("data", {}).get("privacy_level_options", [])
+                if not isinstance(options, list) or not all(
+                    isinstance(option, str) for option in options
+                ):
+                    raise RuntimeError("TikTok returned malformed privacy level options")
                 if self.privacy_level not in options:
                     raise RuntimeError(
                         f"configured privacy level {self.privacy_level!r} is not allowed: {options}"
