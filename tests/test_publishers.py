@@ -436,8 +436,7 @@ def test_telegram_redacts_bot_token_from_http_error_logs(tmp_path: Path, capsys)
     publisher = TelegramPublisher(token, "@channel")
     response = _response({"ok": False})
     response.raise_for_status.side_effect = requests.HTTPError(
-        "401 Client Error for url: "
-        f"https://api.telegram.org/bot{token}/sendPhoto"
+        f"401 Client Error for url: https://api.telegram.org/bot{token}/sendPhoto"
     )
     publisher.session.post = MagicMock(return_value=response)
 
