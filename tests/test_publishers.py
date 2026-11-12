@@ -459,7 +459,7 @@ def test_tiktok_redacts_access_token_from_provider_error_logs(
         direct_post_enabled=True,
         max_polls=0,
     )
-    publisher.rate_limiter.wait = lambda: None
+    publisher.rate_limiter.wait = MagicMock()
     response = _response({"error": {"code": "invalid", "message": f"rejected {token}"}})
     publisher.session.post = MagicMock(return_value=response)
 
