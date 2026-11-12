@@ -59,7 +59,8 @@ class TelegramPublisher(Publisher):
             )
             return True
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
-            print(f"Telegram {method} failed: {exc}")
+            message = str(exc).replace(self.endpoint.removeprefix("https://api.telegram.org"), "[REDACTED]")
+            print(f"Telegram {method} failed: {message[:300]}")
             return False
 
     def publish(self, image_path: Path, caption: str) -> bool:
