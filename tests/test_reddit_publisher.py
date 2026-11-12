@@ -120,3 +120,25 @@ def test_reddit_requires_https_media_url_and_user_agent() -> None:
         RedditPublisher("token", "earthporn", "http://cdn.example.com/outbox", "valid-agent")
     with pytest.raises(ValueError, match="User-Agent"):
         RedditPublisher("token", "earthporn", "https://cdn.example.com/outbox", "")
+
+@pytest.mark.parametrize("user_agent", [None, 1, True])
+def test_reddit_rejects_non_string_user_agent(user_agent: object) -> None:
+    with pytest.raises(ValueError, match="User-Agent"):
+        RedditPublisher(
+            "token",
+            "earthporn",
+            "https://cdn.example.com/outbox",
+            user_agent,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan"), True, "30"])
+def test_reddit_rejects_invalid_timeout(timeout: object) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        RedditPublisher(
+            "token",
+            "earthporn",
+            "https://cdn.example.com/outbox",
+            "valid-agent",
+            timeout=timeout,  # type: ignore[arg-type]
+        )
