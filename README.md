@@ -11,6 +11,16 @@ ruff check .
 ruff format --check .
 ```
 
+### Protect the main branch
+
+After the CI workflow has passed on the branch you intend to merge, apply the repository's baseline branch protection from an administrator-authenticated workstation:
+
+```bash
+gh auth login
+bash scripts/protect-main.sh michaelkage/autonomous-media-network
+```
+
+The script verifies that `main` is the default branch, requires pull requests, requires all four CI jobs (Python 3.11, 3.12, 3.13, and Reddit Devvit), requires the branch to be up to date, and disables force-pushes and branch deletion. It also enables administrator enforcement and verifies the resulting GitHub policy after applying it. The policy requires a pull request but does not require an approval, avoiding a deadlock for a single-maintainer repository. Run it with a token that has repository administration permission. It changes GitHub repository settings; it does not merge or deploy the application.
 
 ### Native Reddit image publishing through Devvit
 
