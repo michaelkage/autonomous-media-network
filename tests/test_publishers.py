@@ -427,3 +427,21 @@ def test_instagram_does_not_repeat_ambiguous_media_publish(tmp_path: Path) -> No
     final_retry.session.post = MagicMock()
     assert final_retry.publish(image, "caption") is False
     final_retry.session.post.assert_not_called()
+
+
+def test_telegram_redacts_bot_token_from_http_error_logs(tmp_path: Path, capsys) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    token = "123456:private-bot-token"
+    publisher = TelegramPublisher(token, "@channel")
+    response = _response({"ok": False})
+    response.raise_for_status.side_effect = requests.HTTPError(
+        "401 Client Error for url: "
+        f"https://api.telegram.org/bot{token}/sendPhoto"
+    )
+    publisher.session.post = MagicMock(return_value=response)
+
+    assert publisher.publish(image, "caption") is False
+    output = capsys.readouterr().out
+    assert token not in output
+    assert "[REDACTED]" in output
