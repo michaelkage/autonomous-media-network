@@ -682,6 +682,7 @@ def test_bluesky_sanitizes_authentication_exception(
 
     assert secret not in str(error.value)
 
+
 @pytest.mark.parametrize("value", [float("inf"), float("nan"), True, "1"])
 def test_tiktok_rejects_invalid_timeout_and_poll_interval(value: object) -> None:
     with pytest.raises(ValueError, match="finite"):
