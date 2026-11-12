@@ -78,6 +78,11 @@ def test_telegram_uses_image_mime_type(tmp_path: Path) -> None:
     uploaded = publisher.session.post.call_args.kwargs["files"]["photo"]
     assert uploaded[2] == "image/jpeg"
 
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan"), True, "30"])
+def test_telegram_rejects_invalid_timeout(timeout: object) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        TelegramPublisher("token", "@channel", timeout=timeout)  # type: ignore[arg-type]
+
 
 def test_instagram_runs_container_processing_and_publish_flow(tmp_path: Path) -> None:
     image = tmp_path / "photo.jpg"
