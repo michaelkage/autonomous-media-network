@@ -536,6 +536,7 @@ def test_instagram_rejects_non_object_container_creation_response(tmp_path: Path
     image.write_bytes(b"image")
     publisher = InstagramPublisher("token", "123456", "https://media.example.com/outbox")
     publisher.session.post = MagicMock(return_value=_response([]))
+    publisher.session.get = MagicMock()
 
     assert publisher.publish(image, "caption") is False
     publisher.session.get.assert_not_called()
