@@ -28,7 +28,7 @@ class FacebookPagePublisher(Publisher):
     ) -> None:
         if not isinstance(page_access_token, str) or not page_access_token.strip():
             raise ValueError("Facebook Page access token is required")
-        if isinstance(page_id, bool) or not str(page_id).isdigit():
+        if isinstance(page_id, bool) or re.fullmatch(r"[0-9]+", str(page_id)) is None:
             raise ValueError("Facebook Page ID must contain only decimal digits")
         if not isinstance(api_version, str) or not re.fullmatch(r"v[0-9]+\.[0-9]+", api_version):
             raise ValueError("api_version must use the format vMAJOR.MINOR")
