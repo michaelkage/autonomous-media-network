@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import sqlite3
 import threading
 import time
@@ -31,8 +32,13 @@ class SQLiteTokenRateLimiter:
     """Reserve request slots transactionally across local worker processes."""
 
     def __init__(self, database: Path, token_key: str, min_interval: float = 10.0) -> None:
-        if min_interval <= 0:
-            raise ValueError("min_interval must be positive")
+        if (
+            isinstance(min_interval, bool)
+            or not isinstance(min_interval, (int, float))
+            or not math.isfinite(min_interval)
+            or min_interval <= 0
+        ):
+            raise ValueError("min_interval must be a positive finite number")
         self.database = Path(database).resolve()
         self.database.parent.mkdir(parents=True, exist_ok=True)
         self.token_key = token_key
@@ -112,8 +118,17 @@ class TikTokPublisher(Publisher):
             raise ValueError("TikTok privacy_level must be explicitly configured")
         if not direct_post_enabled:
             raise ValueError("TikTok direct posting requires explicit direct_post_enabled=true")
-        if timeout <= 0 or poll_interval < 0:
-            raise ValueError("timeout must be positive and poll_interval cannot be negative")
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout <= 0
+            or isinstance(poll_interval, bool)
+            or not isinstance(poll_interval, (int, float))
+            or not math.isfinite(poll_interval)
+            or poll_interval < 0
+        ):
+            raise ValueError("timeout must be positive and poll_interval must be non-negative; both must be finite numbers")
         if isinstance(max_polls, bool) or not isinstance(max_polls, int) or max_polls < 0:
             raise ValueError("max_polls must be a non-negative integer")
         self.token, self.public_base_url = access_token, public_base_url.rstrip("/")
