@@ -109,6 +109,7 @@ def test_x_rejects_invalid_timeout(timeout: object) -> None:
     with pytest.raises(ValueError, match="finite"):
         XPublisher("user-token", timeout=timeout)  # type: ignore[arg-type]
 
+
 def test_x_does_not_log_provider_controlled_error_details(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -124,4 +125,3 @@ def test_x_does_not_log_provider_controlled_error_details(
     assert "provider diagnostic" not in output
     assert "internal account data" not in output
     assert "RuntimeError" in output
-
