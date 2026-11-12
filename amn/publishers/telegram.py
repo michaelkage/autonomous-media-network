@@ -20,6 +20,7 @@ class TelegramPublisher(Publisher):
         if not bot_token or not chat_id:
             raise ValueError("Telegram bot token and chat id are required")
         self.chat_id, self.timeout = chat_id, timeout
+        self.bot_token = bot_token
         self.endpoint = f"https://api.telegram.org/bot{bot_token}"
         self.retry_after: float | None = None
         self.last_message_id: int | None = None
@@ -59,7 +60,7 @@ class TelegramPublisher(Publisher):
             )
             return True
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
-            message = str(exc).replace(self.endpoint.removeprefix("https://api.telegram.org"), "[REDACTED]")
+            message = str(exc).replace(self.bot_token, "[REDACTED]")
             print(f"Telegram {method} failed: {message[:300]}")
             return False
 
