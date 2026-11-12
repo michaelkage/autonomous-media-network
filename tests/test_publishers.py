@@ -531,7 +531,6 @@ def test_tiktok_honors_retry_after_response_header(tmp_path: Path) -> None:
     assert publisher.retry_after == 13
 
 
-
 def test_instagram_rejects_non_object_container_creation_response(tmp_path: Path) -> None:
     image = tmp_path / "photo.jpg"
     image.write_bytes(b"image")
@@ -562,7 +561,6 @@ def test_instagram_rejects_non_object_media_publish_response(tmp_path: Path) -> 
     publisher.session.get = MagicMock(return_value=_response({"status_code": "FINISHED"}))
 
     assert publisher.publish(image, "caption") is False
-
 
 
 def test_tiktok_missing_media_asset_returns_failure_without_raising(tmp_path: Path) -> None:
