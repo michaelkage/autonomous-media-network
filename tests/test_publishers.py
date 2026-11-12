@@ -529,3 +529,36 @@ def test_tiktok_honors_retry_after_response_header(tmp_path: Path) -> None:
 
     assert publisher.publish(image, "caption") is False
     assert publisher.retry_after == 13
+
+
+
+def test_instagram_rejects_non_object_container_creation_response(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = InstagramPublisher("token", "123456", "https://media.example.com/outbox")
+    publisher.session.post = MagicMock(return_value=_response([]))
+
+    assert publisher.publish(image, "caption") is False
+    publisher.session.get.assert_not_called()
+
+
+def test_instagram_rejects_non_object_container_status_response(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = InstagramPublisher("token", "123456", "https://media.example.com/outbox")
+    publisher.session.post = MagicMock(return_value=_response({"id": "container-1"}))
+    publisher.session.get = MagicMock(return_value=_response([]))
+
+    assert publisher.publish(image, "caption") is False
+
+
+def test_instagram_rejects_non_object_media_publish_response(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = InstagramPublisher("token", "123456", "https://media.example.com/outbox")
+    publisher.session.post = MagicMock(
+        side_effect=[_response({"id": "container-1"}), _response([])]
+    )
+    publisher.session.get = MagicMock(return_value=_response({"status_code": "FINISHED"}))
+
+    assert publisher.publish(image, "caption") is False
