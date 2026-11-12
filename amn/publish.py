@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import random
 import sqlite3
 import threading
@@ -88,13 +89,15 @@ def _retry_after_from_response(response: Any) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        seconds = float(value)
+        return max(0.0, seconds) if math.isfinite(seconds) else None
     except (TypeError, ValueError):
         try:
             retry_at = parsedate_to_datetime(value)
             if retry_at.tzinfo is None:
                 retry_at = retry_at.replace(tzinfo=UTC)
-            return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
+            seconds = (retry_at - datetime.now(UTC)).total_seconds()
+            return max(0.0, seconds) if math.isfinite(seconds) else None
         except (TypeError, ValueError, OverflowError):
             return None
 
@@ -103,6 +106,10 @@ class RateLimiter:
     """Thread-safe token spacing plus bounded exponential retry delay."""
 
     def __init__(self, min_interval: float = 1.0, max_backoff: float = 60.0) -> None:
+        if not math.isfinite(min_interval) or min_interval < 0:
+            raise ValueError("min_interval must be finite and non-negative")
+        if not math.isfinite(max_backoff) or max_backoff < 0:
+            raise ValueError("max_backoff must be finite and non-negative")
         self.min_interval, self.max_backoff = min_interval, max_backoff
         self._lock = threading.Lock()
         self._next_at = 0.0
@@ -116,8 +123,10 @@ class RateLimiter:
             time.sleep(delay)
 
     def retry_delay(self, attempt: int, retry_after: float | None = None) -> float:
-        if retry_after is not None:
-            return max(0.0, retry_after)
+        if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 0:
+            raise ValueError("attempt must be a non-negative integer")
+        if retry_after is not None and math.isfinite(retry_after) and retry_after >= 0:
+            return retry_after
         return min(self.max_backoff, 2**attempt + random.random())
 
 
@@ -346,6 +355,8 @@ def publish_manifest(
     A crash after remote acceptance but before the state write can still cause
     an at-least-once duplicate; provider-side idempotency is required to close it.
     """
+    if isinstance(retries, bool) or not isinstance(retries, int) or retries < 0:
+        raise ValueError("retries must be a non-negative integer")
     manifest_path = Path(manifest_path).resolve()
     resolved_root = Path(root).resolve() if root else manifest_path.parent.parent.resolve()
     platform_key = platform or type(publisher).__name__.lower()
