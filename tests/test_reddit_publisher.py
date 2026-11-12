@@ -121,6 +121,7 @@ def test_reddit_requires_https_media_url_and_user_agent() -> None:
     with pytest.raises(ValueError, match="User-Agent"):
         RedditPublisher("token", "earthporn", "https://cdn.example.com/outbox", "")
 
+
 @pytest.mark.parametrize("user_agent", [None, 1, True])
 def test_reddit_rejects_non_string_user_agent(user_agent: object) -> None:
     with pytest.raises(ValueError, match="User-Agent"):
