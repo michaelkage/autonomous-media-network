@@ -468,6 +468,7 @@ def test_tiktok_redacts_access_token_from_provider_error_logs(
     assert token not in output
     assert "[REDACTED]" in output
 
+
 def test_tiktok_rejects_malformed_provider_json_without_crashing(tmp_path: Path) -> None:
     image = tmp_path / "photo.jpg"
     image.write_bytes(b"image")
