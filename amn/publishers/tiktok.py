@@ -146,11 +146,11 @@ class TikTokPublisher(Publisher):
         error = result.get("error") or {}
         if not isinstance(error, dict):
             raise RuntimeError("TikTok returned a malformed error response")
+        if error.get("code") not in {None, "", "ok"}:
+            raise RuntimeError(f"TikTok API {error.get('code')}: {error.get('message', '')}")
         data = result.get("data")
         if not isinstance(data, dict):
             raise RuntimeError("TikTok returned malformed response data")
-        if error.get("code") not in {None, "", "ok"}:
-            raise RuntimeError(f"TikTok API {error.get('code')}: {error.get('message', '')}")
         return result
 
     def _operation_key(self, image_path: Path, photo_url: str, caption: str) -> str:
