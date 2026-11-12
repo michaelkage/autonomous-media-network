@@ -108,3 +108,20 @@ def test_x_rejects_non_jpeg_before_network_call(tmp_path: Path) -> None:
 def test_x_rejects_invalid_timeout(timeout: object) -> None:
     with pytest.raises(ValueError, match="finite"):
         XPublisher("user-token", timeout=timeout)  # type: ignore[arg-type]
+
+def test_x_does_not_log_provider_controlled_error_details(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = XPublisher("user-token")
+    publisher.session.post = MagicMock(
+        return_value=_response({"detail": "provider diagnostic with internal account data"})
+    )
+
+    assert publisher.publish(image, "caption") is False
+    output = capsys.readouterr().out
+    assert "provider diagnostic" not in output
+    assert "internal account data" not in output
+    assert "RuntimeError" in output
+
