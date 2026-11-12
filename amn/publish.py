@@ -146,9 +146,7 @@ class BlueskyPublisher(Publisher):
             # SDK exceptions can include request URLs, credentials, or session
             # details. Preserve the exception class for diagnosis, never its
             # untrusted message.
-            raise RuntimeError(
-                f"Bluesky authentication failed ({type(exc).__name__})"
-            ) from None
+            raise RuntimeError(f"Bluesky authentication failed ({type(exc).__name__})") from None
 
     def publish(self, image_path: Path, caption: str) -> bool:
         try:
