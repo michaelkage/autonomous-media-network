@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import mimetypes
 from pathlib import Path
 
@@ -19,8 +20,13 @@ class TelegramPublisher(Publisher):
     def __init__(self, bot_token: str, chat_id: str, *, timeout: float = 30.0) -> None:
         if not bot_token or not chat_id:
             raise ValueError("Telegram bot token and chat id are required")
-        if timeout <= 0:
-            raise ValueError("timeout must be positive")
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError("timeout must be a positive finite number")
         self.chat_id, self.timeout = chat_id, timeout
         self.bot_token = bot_token
         self.endpoint = f"https://api.telegram.org/bot{bot_token}"
