@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import math
 from pathlib import Path
 
 import requests
@@ -20,8 +21,13 @@ class XPublisher(Publisher):
     def __init__(self, user_access_token: str, *, timeout: float = 30.0) -> None:
         if not user_access_token:
             raise ValueError("X user access token is required")
-        if timeout <= 0:
-            raise ValueError("timeout must be positive")
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError("timeout must be a positive finite number")
         self.token = user_access_token
         self.base = "https://api.x.com/2"
         self.timeout = timeout
@@ -51,6 +57,8 @@ class XPublisher(Publisher):
         self.last_message_id = None
         try:
             image_path = Path(image_path)
+            if image_path.suffix.lower() not in {".jpg", ".jpeg"}:
+                raise ValueError("X photo uploads require a JPEG image")
             size = image_path.stat().st_size
             if size > _MAX_IMAGE_BYTES:
                 raise ValueError("X image uploads are limited to 5 MB")
