@@ -119,6 +119,7 @@ def test_facebook_page_accepts_valid_api_version_and_numeric_page_id() -> None:
     assert publisher.base == "https://graph.facebook.com/v26.0"
     assert publisher.page_id == "123456"
 
+
 def test_facebook_page_rejects_non_jpeg_before_network_call(tmp_path: Path) -> None:
     image = tmp_path / "photo.png"
     image.write_bytes(b"image-bytes")
