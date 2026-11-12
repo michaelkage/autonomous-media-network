@@ -485,3 +485,48 @@ def test_tiktok_rejects_malformed_provider_json_without_crashing(tmp_path: Path)
     publisher.session.post = MagicMock(return_value=response)
 
     assert publisher.publish(image, "caption") is False
+
+
+
+def test_telegram_rejects_non_object_provider_json_without_crashing(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = TelegramPublisher("token", "@channel")
+    response = _response({})
+    response.json.return_value = []
+    publisher.session.post = MagicMock(return_value=response)
+
+    assert publisher.publish(image, "caption") is False
+    assert publisher.last_message_id is None
+
+
+def test_telegram_uses_safe_default_for_malformed_rate_limit_payload(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = TelegramPublisher("token", "@channel")
+    response = _response([])
+    response.status_code = 429
+    publisher.session.post = MagicMock(return_value=response)
+
+    assert publisher.publish(image, "caption") is False
+    assert publisher.retry_after == 1.0
+
+
+def test_tiktok_honors_retry_after_response_header(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = TikTokPublisher(
+        "test-access-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        max_polls=0,
+    )
+    publisher.rate_limiter.wait = MagicMock()
+    response = _response({})
+    response.headers = {"Retry-After": "13"}
+    response.raise_for_status.side_effect = requests.HTTPError("rate limited", response=response)
+    publisher.session.post = MagicMock(return_value=response)
+
+    assert publisher.publish(image, "caption") is False
+    assert publisher.retry_after == 13
