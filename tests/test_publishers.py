@@ -487,7 +487,6 @@ def test_tiktok_rejects_malformed_provider_json_without_crashing(tmp_path: Path)
     assert publisher.publish(image, "caption") is False
 
 
-
 def test_telegram_rejects_non_object_provider_json_without_crashing(tmp_path: Path) -> None:
     image = tmp_path / "photo.jpg"
     image.write_bytes(b"image")
