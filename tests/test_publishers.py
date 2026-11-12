@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 
-from amn.publish import RateLimiter
+from amn.publish import BlueskyPublisher, RateLimiter
 from amn.publishers.instagram import InstagramPublisher
 from amn.publishers.telegram import TelegramPublisher
 from amn.publishers.tiktok import SQLiteTokenRateLimiter, TikTokPublisher
@@ -634,3 +636,48 @@ def test_tiktok_rejects_null_data_payload(tmp_path: Path) -> None:
     )
 
     assert publisher.publish(image, "caption") is False
+
+
+def test_bluesky_redacts_provider_exception_details(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    secret = "bluesky-app-password-secret"
+
+    class FakeClient:
+        def login(self, handle: str, password: str) -> None:
+            assert password == secret
+
+        def upload_blob(self, _image: bytes) -> object:
+            raise RuntimeError(f"request failed with credential {secret}")
+
+    module = ModuleType("atproto")
+    module.Client = FakeClient
+    monkeypatch.setitem(sys.modules, "atproto", module)
+
+    publisher = BlueskyPublisher("user.example", secret)
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+
+    assert publisher.publish(image, "caption") is False
+    output = capsys.readouterr().out
+    assert secret not in output
+    assert "RuntimeError" in output
+
+
+def test_bluesky_sanitizes_authentication_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "bluesky-app-password-secret"
+
+    class FakeClient:
+        def login(self, _handle: str, _password: str) -> None:
+            raise RuntimeError(f"authentication failed: {secret}")
+
+    module = ModuleType("atproto")
+    module.Client = FakeClient
+    monkeypatch.setitem(sys.modules, "atproto", module)
+
+    with pytest.raises(RuntimeError, match="Bluesky authentication failed") as error:
+        BlueskyPublisher("user.example", secret)
+
+    assert secret not in str(error.value)
