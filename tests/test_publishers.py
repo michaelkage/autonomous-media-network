@@ -153,7 +153,9 @@ def test_instagram_rejects_unsafe_media_base_url(media_url: str) -> None:
 def test_instagram_rejects_non_string_or_blank_access_token() -> None:
     for token in ("", "   ", None, 123):
         with pytest.raises(ValueError, match="access token"):
-            InstagramPublisher(token, "123456", "https://media.example.com/outbox")  # type: ignore[arg-type]
+            InstagramPublisher(
+                token, "123456", "https://media.example.com/outbox"
+            )  # type: ignore[arg-type]
 
 
 def test_tiktok_publishers_share_rate_limiter_per_access_token() -> None:
