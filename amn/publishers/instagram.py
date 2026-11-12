@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import sqlite3
 import time
 from contextlib import closing
@@ -44,8 +45,17 @@ class InstagramPublisher(Publisher):
             raise ValueError("Instagram media base URL must be public HTTPS")
         if isinstance(max_polls, bool) or not isinstance(max_polls, int) or max_polls < 1:
             raise ValueError("max_polls must be a positive integer")
-        if poll_interval < 0 or timeout <= 0:
-            raise ValueError("timeout must be positive and poll_interval cannot be negative")
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout <= 0
+            or isinstance(poll_interval, bool)
+            or not isinstance(poll_interval, (int, float))
+            or not math.isfinite(poll_interval)
+            or poll_interval < 0
+        ):
+            raise ValueError("timeout must be positive and poll_interval must be non-negative; both must be finite numbers")
         self.token, self.user_id = access_token, instagram_user_id
         self.public_base_url = public_base_url.rstrip("/")
         self.base = f"https://graph.facebook.com/{api_version}"
