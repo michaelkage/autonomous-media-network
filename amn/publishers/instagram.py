@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 import sqlite3
 import time
 from contextlib import closing
@@ -43,7 +44,7 @@ class InstagramPublisher(Publisher):
             raise ValueError("Instagram access token is required")
         if not isinstance(instagram_user_id, str) or re.fullmatch(r"[0-9]+", instagram_user_id) is None:
             raise ValueError("Instagram user ID must contain only decimal digits")
-        if not isinstance(api_version, str) or re.fullmatch(r"v[0-9]+\\.[0-9]+", api_version) is None:
+        if not isinstance(api_version, str) or re.fullmatch(r"v[0-9]+\.[0-9]+", api_version) is None:
             raise ValueError("api_version must use the format vMAJOR.MINOR")
         try:
             valid_port = parsed.port is None or 1 <= parsed.port <= 65535
