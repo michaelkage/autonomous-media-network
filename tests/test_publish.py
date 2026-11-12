@@ -288,6 +288,8 @@ def test_rate_limiter_rejects_non_finite_or_negative_configuration() -> None:
         {"min_interval": float("inf")},
         {"max_backoff": -1},
         {"max_backoff": float("nan")},
+        {"min_interval": "1"},
+        {"max_backoff": True},
     ):
         with pytest.raises(ValueError):
             RateLimiter(**kwargs)
@@ -299,6 +301,7 @@ def test_rate_limiter_ignores_non_finite_retry_after() -> None:
     limiter = RateLimiter(min_interval=0, max_backoff=5)
     assert 0 <= limiter.retry_delay(0, float("inf")) <= 2
     assert 0 <= limiter.retry_delay(0, float("nan")) <= 2
+    assert 0 <= limiter.retry_delay(0, "invalid") <= 2
 
 
 def test_retry_after_parser_rejects_non_finite_header() -> None:
