@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import requests
@@ -26,8 +27,13 @@ class FacebookPagePublisher(Publisher):
     ) -> None:
         if not page_access_token or not page_id:
             raise ValueError("Facebook Page access token and page ID are required")
-        if timeout <= 0:
-            raise ValueError("timeout must be positive")
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError("timeout must be a positive finite number")
         self.token = page_access_token
         self.page_id = str(page_id)
         self.base = f"https://graph.facebook.com/{api_version}"
