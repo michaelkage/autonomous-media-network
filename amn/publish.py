@@ -106,9 +106,19 @@ class RateLimiter:
     """Thread-safe token spacing plus bounded exponential retry delay."""
 
     def __init__(self, min_interval: float = 1.0, max_backoff: float = 60.0) -> None:
-        if not math.isfinite(min_interval) or min_interval < 0:
+        if (
+            isinstance(min_interval, bool)
+            or not isinstance(min_interval, (int, float))
+            or not math.isfinite(min_interval)
+            or min_interval < 0
+        ):
             raise ValueError("min_interval must be finite and non-negative")
-        if not math.isfinite(max_backoff) or max_backoff < 0:
+        if (
+            isinstance(max_backoff, bool)
+            or not isinstance(max_backoff, (int, float))
+            or not math.isfinite(max_backoff)
+            or max_backoff < 0
+        ):
             raise ValueError("max_backoff must be finite and non-negative")
         self.min_interval, self.max_backoff = min_interval, max_backoff
         self._lock = threading.Lock()
@@ -125,8 +135,13 @@ class RateLimiter:
     def retry_delay(self, attempt: int, retry_after: float | None = None) -> float:
         if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 0:
             raise ValueError("attempt must be a non-negative integer")
-        if retry_after is not None and math.isfinite(retry_after) and retry_after >= 0:
-            return retry_after
+        if (
+            isinstance(retry_after, (int, float))
+            and not isinstance(retry_after, bool)
+            and math.isfinite(retry_after)
+            and retry_after >= 0
+        ):
+            return float(retry_after)
         return min(self.max_backoff, 2**attempt + random.random())
 
 
