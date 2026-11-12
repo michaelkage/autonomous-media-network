@@ -134,6 +134,7 @@ class TikTokPublisher(Publisher):
         response = self.session.post(
             f"{self.API}/{endpoint}/", headers=self.headers, json=payload, timeout=self.timeout
         )
+        self.retry_after = _retry_after_from_response(response)
         response.raise_for_status()
         result = response.json()
         if not isinstance(result, dict):
