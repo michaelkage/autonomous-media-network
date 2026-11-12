@@ -100,3 +100,21 @@ def test_facebook_page_config_accepts_disabled_target() -> None:
 def test_facebook_page_rejects_invalid_timeout(timeout: object) -> None:
     with pytest.raises(ValueError, match="finite"):
         FacebookPagePublisher("page-token", "123456", timeout=timeout)  # type: ignore[arg-type]
+
+@pytest.mark.parametrize("page_id", [None, True, False, "123/../../me", "page-123", ""])
+def test_facebook_page_rejects_invalid_page_id(page_id: object) -> None:
+    with pytest.raises(ValueError, match="Page ID"):
+        FacebookPagePublisher("page-token", page_id)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("api_version", ["26.0", "v26", "v26.0/photos", "v26.0?x=1", ""])
+def test_facebook_page_rejects_invalid_api_version(api_version: object) -> None:
+    with pytest.raises(ValueError, match="api_version"):
+        FacebookPagePublisher("page-token", "123456", api_version=api_version)  # type: ignore[arg-type]
+
+
+def test_facebook_page_accepts_valid_api_version_and_numeric_page_id() -> None:
+    publisher = FacebookPagePublisher("page-token", 123456, api_version="v26.0")
+    assert publisher.base == "https://graph.facebook.com/v26.0"
+    assert publisher.page_id == "123456"
+
