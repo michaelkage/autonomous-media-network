@@ -111,7 +111,9 @@ def test_instagram_requires_public_https_media_host() -> None:
     with pytest.raises(ValueError, match="public HTTPS"):
         InstagramPublisher("token", "123456", "http://localhost/outbox")
 
-@pytest.mark.parametrize("user_id", ["abc", "123/path", "", "１２３", "1?x=1", "1#fragment"])
+@pytest.mark.parametrize(
+    "user_id", ["abc", "123/path", "", "１２３", "1?x=1", "1#fragment"]
+)
 def test_instagram_rejects_invalid_user_id(user_id: str) -> None:
     with pytest.raises(ValueError, match="user ID"):
         InstagramPublisher("token", user_id, "https://media.example.com/outbox")
@@ -120,7 +122,12 @@ def test_instagram_rejects_invalid_user_id(user_id: str) -> None:
 @pytest.mark.parametrize("api_version", ["25", "v25", "v25.0/media", "v25.0?x=1", ""])
 def test_instagram_rejects_invalid_api_version(api_version: str) -> None:
     with pytest.raises(ValueError, match="api_version"):
-        InstagramPublisher("token", "123456", "https://media.example.com/outbox", api_version=api_version)
+        InstagramPublisher(
+            "token",
+            "123456",
+            "https://media.example.com/outbox",
+            api_version=api_version,
+        )
 
 
 @pytest.mark.parametrize(
