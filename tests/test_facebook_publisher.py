@@ -95,6 +95,7 @@ def test_facebook_page_config_accepts_disabled_target() -> None:
     }
     assert validate_config(config) == config
 
+
 @pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan"), True, "30"])
 def test_facebook_page_rejects_invalid_timeout(timeout: object) -> None:
     with pytest.raises(ValueError, match="finite"):
