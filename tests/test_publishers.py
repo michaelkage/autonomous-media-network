@@ -111,6 +111,38 @@ def test_instagram_requires_public_https_media_host() -> None:
     with pytest.raises(ValueError, match="public HTTPS"):
         InstagramPublisher("token", "123456", "http://localhost/outbox")
 
+@pytest.mark.parametrize("user_id", ["abc", "123/path", "", "１２３", "1?x=1", "1#fragment"])
+def test_instagram_rejects_invalid_user_id(user_id: str) -> None:
+    with pytest.raises(ValueError, match="user ID"):
+        InstagramPublisher("token", user_id, "https://media.example.com/outbox")
+
+
+@pytest.mark.parametrize("api_version", ["25", "v25", "v25.0/media", "v25.0?x=1", ""])
+def test_instagram_rejects_invalid_api_version(api_version: str) -> None:
+    with pytest.raises(ValueError, match="api_version"):
+        InstagramPublisher("token", "123456", "https://media.example.com/outbox", api_version=api_version)
+
+
+@pytest.mark.parametrize(
+    "media_url",
+    [
+        "https://user:pass@media.example.com/outbox",
+        "https://media.example.com/outbox?token=secret",
+        "https://media.example.com/outbox#fragment",
+        "https://media.example.com:invalid/outbox",
+        "https://media.example.com:70000/outbox",
+    ],
+)
+def test_instagram_rejects_unsafe_media_base_url(media_url: str) -> None:
+    with pytest.raises(ValueError, match="public HTTPS"):
+        InstagramPublisher("token", "123456", media_url)
+
+
+def test_instagram_rejects_non_string_or_blank_access_token() -> None:
+    for token in ("", "   ", None, 123):
+        with pytest.raises(ValueError, match="access token"):
+            InstagramPublisher(token, "123456", "https://media.example.com/outbox")  # type: ignore[arg-type]
+
 
 def test_tiktok_publishers_share_rate_limiter_per_access_token() -> None:
     first = TikTokPublisher(
