@@ -681,3 +681,48 @@ def test_bluesky_sanitizes_authentication_exception(
         BlueskyPublisher("user.example", secret)
 
     assert secret not in str(error.value)
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), True, "1"])
+def test_tiktok_rejects_invalid_timeout_and_poll_interval(value: object) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        TikTokPublisher(
+            "token",
+            "https://media.example.com/outbox",
+            "SELF_ONLY",
+            direct_post_enabled=True,
+            timeout=value,  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="finite"):
+        TikTokPublisher(
+            "token",
+            "https://media.example.com/outbox",
+            "SELF_ONLY",
+            direct_post_enabled=True,
+            poll_interval=value,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan"), True, "1"])
+def test_tiktok_sqlite_limiter_rejects_invalid_interval(
+    tmp_path: Path, value: object
+) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        SQLiteTokenRateLimiter(tmp_path / "jobs.sqlite3", "token-key", min_interval=value)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), True, "1"])
+def test_instagram_rejects_non_finite_timing(value: object) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        InstagramPublisher(
+            "token",
+            "123456",
+            "https://media.example.com/outbox",
+            timeout=value,  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="finite"):
+        InstagramPublisher(
+            "token",
+            "123456",
+            "https://media.example.com/outbox",
+            poll_interval=value,  # type: ignore[arg-type]
+        )
