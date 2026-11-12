@@ -4,9 +4,6 @@ set -euo pipefail
 # Apply the repository's baseline main-branch protection.
 # Requires GitHub CLI authentication with repository administration permission.
 
-repo="${1:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
-branch="main"
-
 if ! command -v gh >/dev/null 2>&1; then
   echo "error: GitHub CLI (gh) is required" >&2
   exit 1
@@ -15,6 +12,9 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "error: jq is required" >&2
   exit 1
 fi
+
+repo="${1:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
+branch="main"
 
 gh auth status >/dev/null
 default_branch="$(gh api "repos/${repo}" --jq .default_branch)"
