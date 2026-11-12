@@ -118,3 +118,23 @@ def test_facebook_page_accepts_valid_api_version_and_numeric_page_id() -> None:
     publisher = FacebookPagePublisher("page-token", 123456, api_version="v26.0")
     assert publisher.base == "https://graph.facebook.com/v26.0"
     assert publisher.page_id == "123456"
+
+def test_facebook_page_rejects_non_jpeg_before_network_call(tmp_path: Path) -> None:
+    image = tmp_path / "photo.png"
+    image.write_bytes(b"image-bytes")
+    publisher = FacebookPagePublisher("page-token", "123456")
+    publisher.session.post = MagicMock()
+
+    assert publisher.publish(image, "caption") is False
+    publisher.session.post.assert_not_called()
+
+
+def test_facebook_page_rejects_empty_jpeg_before_network_call(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"")
+    publisher = FacebookPagePublisher("page-token", "123456")
+    publisher.session.post = MagicMock()
+
+    assert publisher.publish(image, "caption") is False
+    publisher.session.post.assert_not_called()
+
