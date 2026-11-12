@@ -279,7 +279,6 @@ def test_delivery_event_snapshot_validates_limit(tmp_path: Path) -> None:
         delivery_event_snapshot(tmp_path / "missing.sqlite3", limit=0)
 
 
-
 def test_rate_limiter_rejects_non_finite_or_negative_configuration() -> None:
     from amn.publish import RateLimiter
 
