@@ -102,7 +102,9 @@ def test_facebook_page_rejects_invalid_timeout(timeout: object) -> None:
         FacebookPagePublisher("page-token", "123456", timeout=timeout)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("page_id", [None, True, False, "123/../../me", "page-123", "１２３", "²", ""])
+@pytest.mark.parametrize(
+    "page_id", [None, True, False, "123/../../me", "page-123", "１２３", "²", ""]
+)
 def test_facebook_page_rejects_invalid_page_id(page_id: object) -> None:
     with pytest.raises(ValueError, match="Page ID"):
         FacebookPagePublisher("page-token", page_id)  # type: ignore[arg-type]
