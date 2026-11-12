@@ -140,7 +140,15 @@ class BlueskyPublisher(Publisher):
         except ModuleNotFoundError as exc:
             raise RuntimeError('Install Bluesky support: pip install -e ".[bluesky]"') from exc
         self.client = Client()
-        self.client.login(handle, app_password)
+        try:
+            self.client.login(handle, app_password)
+        except Exception as exc:
+            # SDK exceptions can include request URLs, credentials, or session
+            # details. Preserve the exception class for diagnosis, never its
+            # untrusted message.
+            raise RuntimeError(
+                f"Bluesky authentication failed ({type(exc).__name__})"
+            ) from None
 
     def publish(self, image_path: Path, caption: str) -> bool:
         try:
@@ -154,7 +162,9 @@ class BlueskyPublisher(Publisher):
             )
             return True
         except Exception as exc:
-            print(f"Bluesky publish failed: {exc}")
+            # AT Protocol SDK errors may echo bearer tokens or app passwords.
+            # Do not print provider-controlled exception text.
+            print(f"Bluesky publish failed ({type(exc).__name__})")
             return False
 
 
