@@ -585,7 +585,9 @@ def test_tiktok_missing_media_asset_returns_failure_without_raising(tmp_path: Pa
         ({"max_polls": True}, ValueError),
     ],
 )
-def test_tiktok_rejects_invalid_polling_configuration(options: dict, value: type[Exception]) -> None:
+def test_tiktok_rejects_invalid_polling_configuration(
+    options: dict, value: type[Exception]
+) -> None:
     with pytest.raises(value):
         TikTokPublisher(
             "test-access-token",
@@ -626,6 +628,8 @@ def test_tiktok_rejects_null_data_payload(tmp_path: Path) -> None:
         max_polls=0,
     )
     publisher.rate_limiter.wait = MagicMock()
-    publisher.session.post = MagicMock(return_value=_response({"error": {"code": "ok"}, "data": None}))
+    publisher.session.post = MagicMock(
+        return_value=_response({"error": {"code": "ok"}, "data": None})
+    )
 
     assert publisher.publish(image, "caption") is False
