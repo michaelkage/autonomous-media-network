@@ -52,7 +52,12 @@ class FacebookPagePublisher(Publisher):
         self.last_message_id = None
         try:
             image_path = Path(image_path)
-            if image_path.stat().st_size > _MAX_PHOTO_BYTES:
+            if image_path.suffix.lower() not in {".jpg", ".jpeg"}:
+                raise ValueError("Facebook Page photo uploads require a JPEG image")
+            size = image_path.stat().st_size
+            if size == 0:
+                raise ValueError("Facebook Page photo upload cannot be empty")
+            if size > _MAX_PHOTO_BYTES:
                 raise ValueError("Facebook Page photo uploads are limited to 10 MiB")
             with image_path.open("rb") as image:
                 response = self.session.post(
