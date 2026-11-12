@@ -91,6 +91,5 @@ class XPublisher(Publisher):
             self.last_message_id = str(post_id)
             return True
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
-            message = str(exc).replace(self.token, "[REDACTED]")[:300]
-            print(f"X publish failed: {message}")
+            print(f"X publish failed: {type(exc).__name__}")
             return False
