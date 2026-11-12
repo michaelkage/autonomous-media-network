@@ -594,3 +594,38 @@ def test_tiktok_rejects_invalid_polling_configuration(options: dict, value: type
             direct_post_enabled=True,
             **options,
         )
+
+
+def test_tiktok_preserves_retry_after_for_api_level_errors(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = TikTokPublisher(
+        "test-access-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        max_polls=0,
+    )
+    publisher.rate_limiter.wait = MagicMock()
+    response = _response({"error": {"code": "rate_limit", "message": "slow down"}, "data": {}})
+    response.headers = {"Retry-After": "17"}
+    publisher.session.post = MagicMock(return_value=response)
+
+    assert publisher.publish(image, "caption") is False
+    assert publisher.retry_after == 17
+
+
+def test_tiktok_rejects_null_data_payload(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = TikTokPublisher(
+        "test-access-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        max_polls=0,
+    )
+    publisher.rate_limiter.wait = MagicMock()
+    publisher.session.post = MagicMock(return_value=_response({"error": {"code": "ok"}, "data": None}))
+
+    assert publisher.publish(image, "caption") is False
