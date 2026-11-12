@@ -19,6 +19,8 @@ class TelegramPublisher(Publisher):
     def __init__(self, bot_token: str, chat_id: str, *, timeout: float = 30.0) -> None:
         if not bot_token or not chat_id:
             raise ValueError("Telegram bot token and chat id are required")
+        if timeout <= 0:
+            raise ValueError("timeout must be positive")
         self.chat_id, self.timeout = chat_id, timeout
         self.bot_token = bot_token
         self.endpoint = f"https://api.telegram.org/bot{bot_token}"
@@ -44,11 +46,20 @@ class TelegramPublisher(Publisher):
                     timeout=self.timeout,
                 )
             if response.status_code == 429:
-                retry_after = response.json().get("parameters", {}).get("retry_after", 1)
-                self.retry_after = max(0.0, float(retry_after))
+                body = response.json()
+                parameters = body.get("parameters", {}) if isinstance(body, dict) else {}
+                retry_after = (
+                    parameters.get("retry_after", 1) if isinstance(parameters, dict) else 1
+                )
+                try:
+                    self.retry_after = max(0.0, float(retry_after))
+                except (TypeError, ValueError):
+                    self.retry_after = 1.0
                 raise RuntimeError(f"Telegram rate limited; retry after {self.retry_after}s")
             response.raise_for_status()
             payload = response.json()
+            if not isinstance(payload, dict):
+                raise RuntimeError("Telegram returned an invalid response")
             if not payload.get("ok"):
                 raise RuntimeError(payload.get("description", "Telegram rejected the post"))
             result = payload.get("result")
@@ -59,7 +70,7 @@ class TelegramPublisher(Publisher):
                 else None
             )
             return True
-        except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
+        except (requests.RequestException, OSError, ValueError, RuntimeError, TypeError) as exc:
             message = str(exc).replace(self.bot_token, "[REDACTED]")
             print(f"Telegram {method} failed: {message[:300]}")
             return False
