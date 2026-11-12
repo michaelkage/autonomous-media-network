@@ -6,6 +6,7 @@ import json
 import math
 from pathlib import Path
 
+import pytest
 from PIL import Image, ImageEnhance
 
 from amn.intelligence import MAX_DISTANCE, Captioner, DuplicateDetector, dhash, hamming
@@ -106,22 +107,23 @@ class TestDuplicateDetector:
         saved = json.loads(db.read_text(encoding="utf-8"))
         assert all(isinstance(item, str) and len(item) == 16 for item in saved)
 
-    def test_corrupt_db_is_ignored(self, tmp_path: Path):
+    def test_corrupt_db_fails_closed(self, tmp_path: Path):
         db = tmp_path / "hashes.json"
         db.write_text("{not json", encoding="utf-8")
-        detector = DuplicateDetector(db)
-        assert not detector.is_duplicate(_noise_image())
+        with pytest.raises(ValueError, match="duplicate database is corrupt"):
+            DuplicateDetector(db)
 
-    def test_garbage_entries_are_skipped(self, tmp_path: Path):
+    def test_garbage_entries_fail_closed(self, tmp_path: Path):
         db = tmp_path / "hashes.json"
         db.write_text(json.dumps(["nope", 123, "ffffffffffffffff"]), encoding="utf-8")
-        detector = DuplicateDetector(db)
-        assert len(detector.hashes) == 1
+        with pytest.raises(ValueError, match="invalid dHash entry"):
+            DuplicateDetector(db)
 
-    def test_wrong_shape_db_is_ignored(self, tmp_path: Path):
+    def test_wrong_shape_db_fails_closed(self, tmp_path: Path):
         db = tmp_path / "hashes.json"
         db.write_text(json.dumps({"a": 1}), encoding="utf-8")
-        assert not DuplicateDetector(db).hashes
+        with pytest.raises(ValueError, match="JSON array"):
+            DuplicateDetector(db)
 
     def test_creates_parent_dir(self, tmp_path: Path):
         detector = DuplicateDetector(tmp_path / "nested" / "deep" / "hashes.json")

@@ -7,7 +7,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from amn.pipeline import RunResult, load_thresholds, main, run
+from amn.intelligence import DuplicateDetector
+from amn.pipeline import RunResult, load_thresholds, main, process_image, run
 from amn.vetting import Thresholds
 
 
@@ -22,7 +23,7 @@ class TestPassing:
         result = run(project, watermark_text="@amn")
 
         assert [item["source"] for item in result.passed] == ["photo.jpg"]
-        output = project / "outbox" / "photo.jpg"
+        output = project / "outbox" / result.passed[0]["output"].split("/", 1)[1]
         assert output.is_file()
         with Image.open(output) as image:
             assert image.format == "JPEG"
@@ -44,7 +45,7 @@ class TestPassing:
 
         entry = read_manifest(project)["passed"][0]
         assert entry["source"] == "photo.jpg"
-        assert entry["output"] == "outbox/photo.jpg"
+        assert entry["output"].startswith("outbox/photo") and entry["output"].endswith(".jpg")
         assert entry["engagement_rate"] == 0.05
         assert len(entry["sha256"]) == 64
 
@@ -188,18 +189,22 @@ class TestCli:
 
     def test_exits_nonzero_when_something_broke(self, project, capsys):
         (project / "inbox" / "corrupt.jpg").write_bytes(b"nope")
-        assert main(["run", "--root", str(project)]) == 1
+        assert main(["run", "--root", str(project), "--watermark", "@amn"]) == 1
         assert "1 errors" in capsys.readouterr().out
 
     def test_rejections_alone_do_not_fail_the_run(self, project, add_asset, capsys):
         add_asset(size=(100, 100))
-        assert main(["run", "--root", str(project)]) == 0
+        assert main(["run", "--root", str(project), "--watermark", "@amn"]) == 0
         assert "0 passed, 1 rejected" in capsys.readouterr().out
 
-    def test_missing_watermark_text_warns_but_works(self, project, add_asset, capsys):
+    def test_missing_watermark_fails_closed_without_consuming_assets(
+        self, project, add_asset, capsys
+    ):
         add_asset()
-        assert main(["run", "--root", str(project)]) == 0
-        assert "no watermark text set" in capsys.readouterr().err
+        assert main(["run", "--root", str(project)]) == 1
+        assert "watermark required" in capsys.readouterr().err
+        assert (project / "inbox" / "photo.jpg").is_file()
+        assert not (project / "outbox").exists()
 
     def test_repo_pyproject_config_is_internally_valid(self):
         # Guards the config this repo actually ships.
@@ -237,15 +242,133 @@ def test_reddit_sidecar_has_no_views_field(project: Path):
                 ]
             }
         }
-        mock_response.content = b"\x89PNG not real"
+        mock_response.headers = {}
+        mock_response.iter_content.return_value = [b"\x89PNG not real"]
         mock_response.raise_for_status.return_value = None
         mock_session.get.return_value = mock_response
 
-        fetcher = RedditFetcher("test-agent")
+        fetcher = RedditFetcher("test-agent", access_token="reddit-token")
         count = fetcher.fetch("test", inbox_dir=project / "inbox")
 
+        assert mock_session.headers.update.call_args.args[0] == {
+            "User-Agent": "test-agent",
+            "Authorization": "Bearer reddit-token",
+        }
+        assert mock_session.get.call_args_list[0].args[0] == ("https://oauth.reddit.com/r/test/hot")
         assert count == 1
         metrics = json.loads((project / "inbox" / "t3_abc.json").read_text(encoding="utf-8"))
         assert "views" not in metrics, "Reddit doesn't give views; fabricating them fakes the gate"
         assert metrics["likes"] == 1234
         assert metrics["comments"] == 56
+
+
+def test_source_platform_metadata_does_not_overwrite_asset_filename(project, add_asset):
+    source = add_asset(metrics={"views": 10_000, "likes": 500})
+    sidecar = json.loads(source.with_suffix(".json").read_text(encoding="utf-8"))
+    sidecar.update({"source": "reddit", "subreddit": "earthporn"})
+    source.with_suffix(".json").write_text(json.dumps(sidecar), encoding="utf-8")
+
+    result = run(project, watermark_text="@amn")
+
+    assert result.passed[0]["source"] == "photo.jpg"
+    assert result.passed[0]["source_platform"] == "reddit"
+    assert result.passed[0]["subreddit"] == "earthporn"
+
+
+def test_duplicate_rejection_reports_actual_dhash_distance(project, add_asset):
+    source = add_asset(size=(1200, 1200))
+    detector = DuplicateDetector(project / "build" / "hashes.json", max_distance=2)
+    detector.record_from_path(source)
+
+    verdict, record = process_image(
+        source,
+        project / "outbox",
+        Thresholds(),
+        watermark_text="@amn",
+        detector=detector,
+    )
+
+    assert not verdict.passed
+    assert "distance 0, threshold 2" in verdict.reasons[0]
+    assert record == {}
+
+
+def test_pipeline_recovers_checkpoint_before_retiring_source(project, add_asset):
+    import hashlib
+
+    source = add_asset(size=(1200, 1200))
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    record = {
+        "source": source.name,
+        "source_sha256": digest,
+        "output": "outbox/photo.jpg",
+        "width": 1200,
+        "height": 1200,
+        "caption": "Recovered caption",
+        "sha256": "a" * 64,
+    }
+    checkpoint = project / "build" / "pipeline-checkpoint.json"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text(
+        json.dumps(
+            [
+                {
+                    "source_name": source.name,
+                    "source_sha256": digest,
+                    "outcome": "passed",
+                    "record": record,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = run(project, watermark_text="@amn")
+
+    assert result.passed == [record]
+    assert not source.exists()
+    assert not source.with_suffix(".json").exists()
+    assert not checkpoint.exists()
+    assert read_manifest(project)["passed"] == [record]
+
+
+def test_process_image_reuses_identical_output_after_interrupted_run(project, add_asset):
+    source = add_asset(size=(1200, 1200))
+    first_verdict, first_record = process_image(
+        source, project / "outbox", Thresholds(), watermark_text="@amn"
+    )
+    second_verdict, second_record = process_image(
+        source, project / "outbox", Thresholds(), watermark_text="@amn"
+    )
+
+    assert first_verdict.passed and second_verdict.passed
+    assert first_record["output"] == second_record["output"]
+    assert first_record["sha256"] == second_record["sha256"]
+    assert len(list((project / "outbox").glob("*.jpg"))) == 1
+
+
+def test_corrupt_pipeline_checkpoint_fails_closed(project, add_asset):
+    source = add_asset(size=(1200, 1200))
+    checkpoint = project / "build" / "pipeline-checkpoint.json"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text('{"unexpected": "object"}', encoding="utf-8")
+
+    result = run(project, watermark_text="@amn")
+
+    assert result.passed == []
+    assert result.errors and "checkpoint is invalid" in result.errors[0]
+    assert source.is_file()
+
+
+def test_reddit_fetch_cli_requires_oauth_credentials(tmp_path: Path, monkeypatch, capsys) -> None:
+    from amn.pipeline import main
+
+    monkeypatch.delenv("REDDIT_USER_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("AMN_REDDIT_USER_AGENT", raising=False)
+
+    result = main(["fetch", "--source", "reddit", "--query", "earthporn", "--root", str(tmp_path)])
+
+    assert result == 1
+    assert (
+        "REDDIT_USER_ACCESS_TOKEN and AMN_REDDIT_USER_AGENT are required" in capsys.readouterr().err
+    )

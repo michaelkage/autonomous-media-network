@@ -1,87 +1,116 @@
-"""Reddit fetcher.
-
-Fetches trending images from specified subreddits using public JSON endpoints.
-Requires no API keys, only a unique User-Agent.
-"""
+"""Reddit image ingestion with atomic image/sidecar commits."""
 
 from __future__ import annotations
 
 import json
+import os
+import re
+import tempfile
 from pathlib import Path
 
 import requests
 
 __all__ = ["RedditFetcher"]
+_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
+_MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
 
 class RedditFetcher:
-    """Downloads trending imagery from Reddit using public .json endpoints.
-
-    Args:
-        user_agent: Unique string identifying the app to avoid 429s.
-    """
-
-    def __init__(self, user_agent: str = "amn-fetcher-v1") -> None:
+    def __init__(self, user_agent: str = "amn-fetcher-v1", access_token: str | None = None) -> None:
         self.user_agent = user_agent
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": self.user_agent})
+        headers = {"User-Agent": user_agent}
+        if access_token:
+            headers["Authorization"] = f"Bearer {access_token}"
+        self.session.headers.update(headers)
 
-    def fetch(
-        self,
-        subreddit_name: str,
-        limit: int = 10,
-        inbox_dir: Path = Path("inbox"),
-    ) -> int:
-        """Fetch top posts from a subreddit via public JSON. Returns count of assets saved."""
+    def fetch(self, subreddit_name: str, limit: int = 10, inbox_dir: Path = Path("inbox")) -> int:
+        if not re.fullmatch(r"[A-Za-z0-9_]{2,21}", subreddit_name):
+            raise ValueError("invalid subreddit name")
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
         inbox_dir.mkdir(parents=True, exist_ok=True)
-        saved_count = 0
-
-        url = f"https://www.reddit.com/r/{subreddit_name}/hot.json?limit={limit}"
         try:
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(
+                f"https://oauth.reddit.com/r/{subreddit_name}/hot",
+                params={"limit": limit},
+                timeout=(5, 20),
+            )
             response.raise_for_status()
-            data = response.json()
-        except (requests.RequestException, json.JSONDecodeError) as exc:
+            posts = response.json().get("data", {}).get("children", [])
+        except (requests.RequestException, ValueError) as exc:
             print(f"failed to reach reddit: {exc}")
             return 0
 
-        posts = data.get("data", {}).get("children", [])
+        saved = 0
         for post in posts:
-            data_payload = post.get("data", {})
-            url = data_payload.get("url")
-
-            if not url or not any(
-                url.lower().endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp")
+            payload = post.get("data", {})
+            image_url = payload.get("url", "")
+            post_id = payload.get("id", "")
+            if (
+                not re.fullmatch(r"[A-Za-z0-9_]{1,32}", str(post_id))
+                or not image_url.startswith("https://")
+                or not image_url.lower().split("?", 1)[0].endswith(_IMAGE_SUFFIXES)
             ):
                 continue
-
-            post_id = data_payload.get("id")
-            filename = f"{post_id}.jpg"
-            image_path = inbox_dir / filename
-            json_path = inbox_dir / f"{post_id}.json"
-
-            if image_path.exists():
+            image_path, sidecar_path = inbox_dir / f"{post_id}.jpg", inbox_dir / f"{post_id}.json"
+            if image_path.exists() and sidecar_path.exists():
                 continue
-
+            # Recover from a process crash between the two final renames.
+            image_path.unlink(missing_ok=True)
+            sidecar_path.unlink(missing_ok=True)
+            temp_image = temp_sidecar = None
+            download = None
             try:
-                # Download Image
-                img_data = self.session.get(url, timeout=10).content
-                image_path.write_bytes(img_data)
-
-                # Record engagement. Reddit's public JSON exposes upvotes and comments but
-                # no view count, so `views` is deliberately omitted: inventing a
-                # denominator (the old `score * 20`) pinned the engagement rate
-                # at ~5% for every possible input and disabled the vetting gate.
-                # amn.vetting falls back to the absolute min_likes floor.
+                download = self.session.get(image_url, timeout=(5, 30), stream=True)
+                download.raise_for_status()
+                content_length = download.headers.get("Content-Length")
+                if content_length and int(content_length) > _MAX_IMAGE_BYTES:
+                    raise ValueError("image exceeds the 25 MiB download limit")
                 metrics = {
-                    "likes": data_payload.get("score", 0),
-                    "comments": data_payload.get("num_comments", 0),
+                    "likes": max(0, int(payload.get("score") or 0)),
+                    "comments": max(0, int(payload.get("num_comments") or 0)),
                     "shares": 0,
+                    "source": "reddit",
+                    "subreddit": subreddit_name,
+                    "source_id": post_id,
+                    "permalink": f"https://www.reddit.com{payload.get('permalink', '')}",
                 }
-
-                json_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-                saved_count += 1
-            except (requests.RequestException, OSError) as exc:
-                print(f"failed to fetch {url}: {exc}")
-
-        return saved_count
+                with tempfile.NamedTemporaryFile(dir=inbox_dir, delete=False) as f:
+                    temp_image = Path(f.name)
+                    total_bytes = 0
+                    for chunk in download.iter_content(chunk_size=64 * 1024):
+                        if not chunk:
+                            continue
+                        total_bytes += len(chunk)
+                        if total_bytes > _MAX_IMAGE_BYTES:
+                            raise ValueError("image exceeds the 25 MiB download limit")
+                        f.write(chunk)
+                    if total_bytes == 0:
+                        raise ValueError("empty image response")
+                    f.flush()
+                    os.fsync(f.fileno())
+                with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", dir=inbox_dir, delete=False
+                ) as f:
+                    temp_sidecar = Path(f.name)
+                    json.dump(metrics, f)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(temp_image, image_path)
+                temp_image = None
+                os.replace(temp_sidecar, sidecar_path)
+                temp_sidecar = None
+                saved += 1
+            except (requests.RequestException, OSError, ValueError, TypeError) as exc:
+                image_path.unlink(missing_ok=True)
+                sidecar_path.unlink(missing_ok=True)
+                print(f"failed to fetch {image_url}: {exc}")
+            finally:
+                if download is not None:
+                    download.close()
+                if temp_image:
+                    temp_image.unlink(missing_ok=True)
+                if temp_sidecar:
+                    temp_sidecar.unlink(missing_ok=True)
+        return saved

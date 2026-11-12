@@ -1,0 +1,22 @@
+{
+  "name": "amn-reddit-devvit-bridge",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "playtest": "npx devvit playtest",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@devvit/web": "0.15.3",
+    "hono": "4.13.17"
+  },
+  "devDependencies": {
+    "@devvit/start": "0.15.3",
+    "typescript": "5.9.3",
+    "vite": "7.3.8",
+    "vitest": "3.2.4"
+  }
+}

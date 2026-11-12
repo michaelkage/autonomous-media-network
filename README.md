@@ -1,110 +1,217 @@
-# autonomous-media-network
+# Autonomous Media Network
 
-Hands-off content pipeline: drop images into `inbox/`, run the pipeline, vetted + watermarked assets land in `outbox/` alongside a distribution manifest.
+Local-first media ingestion, deterministic vetting, watermarking, and routed social publishing.
 
-```
-inbox/                     amn run                       outbox/
-  photo.jpg       ──────────────────────────►              photo.jpg (watermarked)
-  photo.json                 │                             manifest.json
-(sidecar metrics)            ▼
-                         rejected/
-                           bad_res.jpg
-                           bad_res.json
-```
-
-## Quick Start
+## Install and test
 
 ```bash
-python -m venv .venv
-# Linux / macOS:
-source .venv/bin/activate
-# Windows:
-.venv\Scripts\activate
-
-pip install -e ".[dev]"
-pytest
-ruff check
+pip install -e ".[dev,dashboard]"
+pytest -q
+ruff check .
+ruff format --check .
 ```
 
-## How It Works
+### Protect the main branch
 
-1. **Vetting Engine (`amn.vetting`)**: Pure logic. Assesses each asset against hard limits:
-   - Minimum resolution: default `1080x1080` (rejects anything smaller, e.g. low-res crops, banners with sub-1080 short edges).
-   - Sidecar requirement: every image `foo.ext` must have `foo.json` next to it.
-   - Absolute engagement floor: `min_likes`, default `500`. Enforced for every source.
-   - Engagement rate: `(likes + comments + shares) / views`, minimum `2.0%`, applied **only**
-     when the source reports a real view count. Reddit's public API does not, so this rule
-     is skipped for Reddit rather than fed an invented denominator.
-2. **Watermarking (`amn.watermark`)**: Pillow-driven. Places semi-transparent text with a soft drop shadow in the bottom-right corner, dynamically scaled to the image size. Preserves ICC profiles and EXIF metadata where present.
-3. **Pipeline Orchestrator (`amn.pipeline`)**:
-   - Atomic writes via temporary files.
-   - Idempotent runs.
-   - Moves vetted assets to `outbox/` and rejects to `rejected/`.
-   - Generates SHA-256-verified `manifest.json`.
-
-## CLI Usage
-
-Three subcommands. Thresholds live in `pyproject.toml` under `[tool.amn]`, not in flags.
+After the CI workflow has passed on the branch you intend to merge, apply the repository's baseline branch protection from an administrator-authenticated workstation:
 
 ```bash
-# Pull new media from a source into inbox/
-amn fetch --source reddit --query earthporn --limit 10   # no key needed
-
-**Note:** The Pexels fetcher has been removed. It could not pass the engagement
-gate because it provides no per-photo metrics. Reddit's public `.json` endpoint
-requires no API approval, so it is the only supported source.
-
-# Vet, watermark, and write build/manifest.json
-amn run --watermark "@yourhandle"
-amn run --dry-run        # report only, writes/moves/deletes nothing
-
-# Publish the manifest
-amn publish --platform mock
-amn publish --platform bluesky --handle me.bsky.social   # needs the [bluesky] extra
+gh auth login
+bash scripts/protect-main.sh michaelkage/autonomous-media-network
 ```
 
-## Sidecar Format
+The script verifies that `main` is the default branch, requires pull requests, requires all four CI jobs (Python 3.11, 3.12, 3.13, and Reddit Devvit), requires the branch to be up to date, and disables force-pushes and branch deletion. It also enables administrator enforcement and verifies the resulting GitHub policy after applying it. The policy requires a pull request but does not require an approval, avoiding a deadlock for a single-maintainer repository. Run it with a token that has repository administration permission. It changes GitHub repository settings; it does not merge or deploy the application.
 
-Place alongside the image (e.g. `inbox/post1.png` + `inbox/post1.json`):
+### Native Reddit image publishing through Devvit
 
-```json
-{
-  "views": 50000,
-  "likes": 2400,
-  "comments": 150,
-  "shares": 320
-}
+The optional `reddit_devvit` target creates a Reddit-hosted image post using Devvit's media upload capability and `reddit.submitPost({ kind: "image", imageUrls })`. It is separate from the existing Reddit Data API link-post adapter, so the current adapter remains available as a fallback. Configure the target in `config/amn.json` with a subreddit and public HTTPS media URL, add it to the desired routes, and enable S3-compatible storage if AMN must upload local assets to that URL.
+
+The bridge app lives in `integrations/reddit-devvit`. It uses a Devvit external endpoint authenticated with a managed token, Reddit-hosted media, and the installation's Redis store. **External endpoints are a Reddit limited-access feature.** Request access from Reddit before expecting the endpoint to work. Install the app in the target subreddit, set the installation's `allowedSubreddit` setting and the app-wide comma-separated `allowedMediaHosts` setting, create a global managed token in Developer Settings, and keep that token only in `AMN_REDDIT_DEVVIT_TOKEN`. Set `AMN_REDDIT_DEVVIT_URL` to the app's global external endpoint URL ending in `/external/amn/publish`.
+
+Build and playtest the bridge from its directory with Node.js and the Devvit CLI. The bridge uses Reddit's official `@devvit/start/vite` plugin to produce the runtime-compatible CommonJS server bundle:
+
+```bash
+cd integrations/reddit-devvit
+npm install
+npx devvit login
+npm run build
+npx devvit playtest
 ```
 
-Every field defaults to zero, and `views` may be omitted entirely. Two rules apply:
+AMN's bridge target uses `bridge_url_env` and `bridge_token_env` to select those environment variables. The image must be publicly fetchable over HTTPS from one of the exact hostnames in `allowedMediaHosts`; Reddit's runtime media upload supports PNG, JPEG, and WEBP. AMN rejects files larger than Reddit's documented 20 MB upload ceiling before making the request. Devvit server requests have a 30-second execution ceiling, so avoid oversized images and slow public media hosts.
 
-- **`min_likes` (default 500)** — an absolute floor, enforced for every source. This is
-  the rule that matters in practice, because it cannot be satisfied by inventing a
-  denominator.
-- **`min_engagement_rate` (default 0.02)** — only checked when the source reports a real
-  `views` count. Reddit's public API never does, so for Reddit this rule is skipped
-  rather than faked.
+The bridge reserves each AMN delivery ID in Redis before uploading or submitting. Repeated requests return the original post receipt; requests encountering a processing or ambiguous record are blocked instead of creating a second post. Its authenticated status endpoint reports provider-side state and the latest reconciliation metadata for up to 50 delivery IDs. AMN's loopback dashboard proxies this through `GET /api/reddit-devvit/status`, keeping the managed token server-side. A submission timeout is treated as ambiguous, not as a clean failure. The bridge first checks a bounded window of recent subreddit posts for the unique Reddit-hosted media URL to recover asynchronous image-post receipts. If it cannot prove the result, an operator must independently inspect the subreddit before using the authenticated `/external/amn/reconcile` endpoint with an operator identity and audit note: resolve as `published` with the verified post ID/permalink, or `not_published` only after confirming no post exists. Reconciliation decisions are retained in a separate Redis audit hash. This is deliberate at-most-once protection at the bridge boundary; a crash after the remote post is created but before Redis stores its receipt still requires manual reconciliation. Do not reset an ambiguous record just to make a retry go away.
 
-An asset with no sidecar is rejected outright.
+The bridge posts as the Devvit app account, not as the Reddit account that installed it. Reddit's current media API does not expose a delete operation for uploaded assets, so failed or ambiguous submissions may leave unused Reddit-hosted media behind. Native image post support is distinct from a rich-text post containing an embedded image. No live Reddit submission or Devvit deployment is performed by AMN's automated test suite.
 
-## Duplicate Detection
+## Pipeline
 
-`build/hashes.json` records a 64-bit Pillow dHash per accepted image. Re-crops,
-resizes and re-compressions land within 5 bits of the original and are rejected; the
-rule lives in `amn.intelligence` and the threshold is `MAX_DISTANCE`.
+```bash
+REDDIT_USER_ACCESS_TOKEN="..." AMN_REDDIT_USER_AGENT="linux:amn:v0.2.0 (by /u/your_username)" \
+  amn fetch --source reddit --query earthporn --limit 10
+AMN_WATERMARK_TEXT="@yourhandle" amn run --root .
+amn run --root . --dry-run
+amn publish --platform mock --root .
+amn publish --routed --root .
+amn doctor --root .
+```
 
-## GitHub Actions
+Production runs fail closed when `AMN_WATERMARK_TEXT` is missing. When an output basename already exists, AMN appends a source digest instead of overwriting it. Writes are atomic, and duplicate-database corruption is surfaced rather than silently disabling protection.
 
-- `.github/workflows/ci.yml`: tests + `ruff check` + `ruff format --check` on push and PR.
-- `.github/workflows/pipeline.yml`: daily at 06:17 UTC, on `workflow_dispatch`, or when
-  `inbox/` changes. Watermarks assets, commits the results, and uploads the manifest
-  as an artifact.
+## Distribution and targets
 
-### Requirements
+Copy `config/amn.example.json` to `config/amn.json`. If `--query` is omitted from `amn fetch`, AMN ingests every subreddit listed in `sources.reddit`. Routes map item categories/tags or the source subreddit in each image sidecar to enabled targets. Example sidecar metadata: `"categories": ["landscape"]`. The default route is empty, so content is never broadcast accidentally. Use `amn publish --routed --root .` to dispatch through those mappings. Credentials belong in environment variables, not JSON configuration.
 
-| Variable | Example | Required? |
-|----------|---------|-----------|
-| `AMN_WATERMARK_TEXT` | `@autonomousmedia` | Yes — unwatermarked output is not the goal |
-| `AMN_PUBLISH` | `true` | No — off by default |
-| `BLUESKY_HANDLE` | `yourname.bsky.social` | Only if `AMN_PUBLISH=true` |
-| `BLUESKY_APP_PASSWORD` | (generate from Bluesky) | Only if `AMN_PUBLISH=true` |
+Supported publisher adapters include Bluesky, Telegram, Facebook Pages, X, Reddit link posts, Instagram Graph API, and TikTok Content Posting API photo posts:
+
+```bash
+TELEGRAM_BOT_TOKEN="..." TELEGRAM_CHAT_ID="@your_channel" \
+  amn publish --platform telegram --root .
+
+# Reddit: registered OAuth access token, submit scope, and descriptive User-Agent
+REDDIT_USER_ACCESS_TOKEN="..." REDDIT_SUBREDDIT="earthporn" \
+AMN_REDDIT_USER_AGENT="linux:amn:v0.2.0 (by /u/your_username)" \
+AMN_PUBLIC_MEDIA_URL="https://media.example.com/outbox" \
+  amn publish --platform reddit --root .
+
+# Native Reddit image posts use the optional Devvit bridge target in amn.json.
+# Configure AMN_REDDIT_DEVVIT_URL and AMN_REDDIT_DEVVIT_TOKEN in the AMN worker environment.
+amn publish --routed --root .
+
+# X: OAuth 2.0 user access token with tweet.write, media.write, and users.read
+X_USER_ACCESS_TOKEN="..." amn publish --platform x --root .
+
+# Facebook Page: Page access token with pages_manage_posts + page ID
+FACEBOOK_PAGE_ACCESS_TOKEN="..." FACEBOOK_PAGE_ID="..." \
+  amn publish --platform facebook --root .
+
+# Instagram: professional account + public HTTPS media hosting required
+INSTAGRAM_ACCESS_TOKEN="..." INSTAGRAM_USER_ID="..." AMN_PUBLIC_MEDIA_URL="https://media.example.com/outbox" \
+  amn publish --platform instagram --root .
+
+# TikTok photo post: verified media URL domain, video.publish scope and explicit privacy
+TIKTOK_ACCESS_TOKEN="..." TIKTOK_PRIVACY_LEVEL="SELF_ONLY" TIKTOK_DIRECT_POST_ENABLED="true" AMN_PUBLIC_MEDIA_URL="https://media.example.com/outbox" \
+  amn publish --platform tiktok --root .
+```
+
+Publishing resolves manifest paths against the project root and records per-platform delivery state in `build/publish-state.json`. Writes are atomic, and same-target deliveries are serialized across threads and local worker processes using a per-target SQLite lock file beside the state ledger. The lock covers the read/publish/write sequence, preventing workers from publishing the same delivery based on stale state. Keep the state and lock files on a local filesystem, not a network filesystem. Rate limiters are shared per target within a process; TikTok's per-token request slots are reserved transactionally in the local build/jobs.sqlite3 database, coordinating publisher instances across local worker processes and restarts. The token itself is never stored, only its SHA-256 key. All workers sharing a TikTok access token must use the same local database file; separate hosts or separate database files are not coordinated. TikTok publish IDs are journaled in that database immediately after initialization; interrupted operations resume by polling the existing ID, and completed operations are recognized on retry rather than submitted again. Instagram media container IDs are journaled in the same database before status polling; interrupted processing resumes against the existing container. A timed-out Instagram media_publish request is marked as requiring reconciliation: AMN checks the existing container status and will not blindly repeat the publish request while the provider still reports FINISHED. Containers reported as `ERROR` or `EXPIRED` are archived in `instagram_publish_history` before a retry creates a replacement container, preserving the failed container ID and terminal status. Structured Graph API errors retain the HTTP status, provider error type/code/subcode, trace ID, and a bounded sanitized message; the dashboard exposes the latest 50 container and provider-error history records. Access tokens and raw provider response payloads are never stored in this history. Inspect unresolved operations with `amn instagram-reconcile list --root .`. After independently checking the Instagram account, resolve one using `amn instagram-reconcile resolve --root . --operation-key <key> --resolution published --actor <operator> --note "Verified the live post"` or `--resolution not_published` when you have confirmed no post exists. `published` marks the operation complete; `not_published` makes it retryable so the next publish attempt creates a fresh container. Each resolution is transactional, can only be applied while the operation is ambiguous, and is retained in `instagram_operation_resolutions`, appended to the unified delivery-event journal with its original delivery correlation, and shown in the dashboard audit history. This command never calls Meta; the operator is responsible for verifying the outcome before choosing a resolution. Adapters honor numeric `Retry-After` responses where the provider supplies them. Failed items remain retryable; successful items are skipped on subsequent runs. Delivery remains at-least-once: a crash after TikTok accepts initialization but before AMN persists the returned publish ID, or after another provider accepts a post but before local state persistence, can still result in a duplicate.\n\nEvery routed publish attempt is also recorded in an append-only `delivery_events` table in `build/jobs.sqlite3`. Events include attempt start, provider acceptance, persisted success, failure, and scheduled retry; captions, access tokens, and provider payloads are deliberately excluded. The loopback dashboard displays the latest 50 events, and `GET /api/deliveries?limit=100` returns a bounded sanitized history (1–500 events) with aggregate counts. This journal is diagnostic history, not a replacement for the delivery state ledger or provider operation journal. The same endpoint includes TikTok operation reconciliation: pending operations younger than the threshold remain pending, while operations with no status update for at least 15 minutes are reported as stalled for operator review. Override the window with `stale_after_seconds` (60–86400) on the endpoint. Stalled is an observation, not a provider failure; AMN does not rewrite the operation status or retry it automatically. Instagram operations are exposed alongside TikTok: processing containers older than the threshold are marked stalled, while an interrupted media_publish outcome is surfaced as reconciliation_required for manual review. Manual resolutions, operator identity, and the required audit note are visible in the dashboard's Instagram reconciliation audit section. Telegram success continues to mean Bot API acceptance only; Telegram does not provide a general outgoing read receipt. Successful `sendPhoto` and `sendDocument` responses expose the Telegram `message_id`, and Facebook Page photo publishing exposes its returned post ID, as `provider_message_id` on the corresponding `provider_accepted` delivery event. These receipts let operators correlate accepted sends with provider-side records; they do not close the crash window before local persistence. Facebook Page photo uploads are capped locally at 10 MiB and use the Page Photos edge. Older delivery journals are migrated additively when the event writer next runs. This receipt improves auditability but does not close the crash window between Telegram accepting a send and AMN persisting its receipt.\n\nTikTok Content Posting webhooks are supported separately from the loopback dashboard. Set `TIKTOK_CLIENT_SECRET` (and optionally `TIKTOK_CLIENT_KEY`), run `amn-webhooks --root .`, and configure `https://your-public-host/webhooks/tiktok` in the TikTok Developer Portal. Put the local receiver behind an HTTPS reverse proxy; do not expose the loopback dashboard. The receiver validates the `TikTok-Signature` HMAC-SHA256 header against the raw request body, enforces a five-minute timestamp window, optionally checks the client key, deduplicates exact webhook receipts, updates matching TikTok publish operations, and records the provider outcome in the delivery timeline. Supported events include `post.publish.failed`, `post.publish.complete`, `post.publish.publicly_available`, `post.publish.no_longer_publicaly_available`, and `post.publish.inbox_delivered`. TikTok may retry webhook delivery, so callbacks are handled idempotently. Status polling remains the fallback when no webhook arrives.
+
+Run `amn doctor --root .` before enabling routed publishing. It performs read-only credential/account checks for enabled providers, authenticates against the Reddit Devvit status endpoint without creating a post, checks S3 bucket access when storage is configured, and verifies that one passed media asset is publicly reachable for Instagram/TikTok/Reddit. It never publishes content and reports sanitized failures. The public media URL must serve the exact outbox filenames; AMN does not expose your local filesystem to Meta or TikTok. For automatic uploads, install `pip install -e ".[s3]"` and configure the optional top-level `storage` block with `provider: "s3"` and your bucket name. AWS credentials use the standard `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN` environment variables; S3-compatible endpoints can be supplied through `AMN_S3_ENDPOINT_URL`. The URL path on each Instagram/TikTok target becomes the object-key prefix, so `https://cdn.example.com/outbox` uploads to `outbox/<filename>`. The bucket must be readable through that public CDN/custom domain. Cloudflare R2 works with its S3 endpoint and `region: "auto"`. Instagram publishing uses Meta's two-step container flow and requires a professional account plus a publicly reachable JPEG URL. TikTok photo publishing uses the current PHOTO content-init endpoint, requires a verified public URL domain, creator privacy-level validation, and the `video.publish` scope. TikTok's API also restricts unaudited apps to private visibility. Its creator-info response must be reviewed and the configured privacy option must match the account's returned options. Configure these targets disabled until the app review, OAuth scopes, verified media host, and account-level tests are complete. Static images use TikTok's photo API; no fake looping video conversion is needed. See [Meta content publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing) and [TikTok Direct Post](https://developers.tiktok.com/docs/en/content-posting-api-get-started).
+
+## Durable jobs
+
+AMN can persist fetch, vetting-pipeline, and routed-publishing work in a local SQLite queue:
+
+```bash
+amn jobs enqueue --kind fetch --query earthporn --limit 10 --root .
+amn jobs enqueue --kind pipeline --root .
+amn jobs enqueue --kind publish --root .
+amn jobs list --status pending --root .
+amn jobs worker --once --root .
+# Keep a worker running to process jobs as they arrive:
+amn jobs worker --root .
+```
+
+The queue lives at `build/jobs.sqlite3`. Claims are transactional across local worker processes, each running job has a renewable lease, and crashed workers' expired jobs are reclaimed. Failed jobs retry with bounded exponential backoff until their attempt budget is exhausted. Pipeline jobs are serialized so two workers do not process the same inbox concurrently. The media pipeline also keeps an atomic per-asset checkpoint at `build/pipeline-checkpoint.json`: completed outcomes are journaled before inbox assets are retired, interrupted runs resume from that journal, and an identical already-rendered output is reused instead of duplicated. Optional dedupe keys prevent duplicate enqueue requests:
+
+Recurring schedules are persisted in the same SQLite database. A scheduler tick enqueues each due schedule at most once, skips missed intervals rather than creating a catch-up storm, and can safely be invoked by cron or systemd timers:
+
+```bash
+amn jobs schedule add --id reddit-earthporn --kind fetch --query earthporn --every-seconds 3600 --root .
+amn jobs schedule list --root .
+amn jobs schedule tick --root .
+amn jobs schedule disable --id reddit-earthporn --root .
+amn jobs schedule enable --id reddit-earthporn --root .
+```
+
+Run `amn jobs schedule tick` from cron (for example, every minute) and keep `amn jobs worker` running separately. The scheduler does not need to stay resident.
+
+```bash
+amn jobs enqueue --kind fetch --query earthporn --dedupe-key "reddit:earthporn:2026-11-10" --root .
+```
+
+This is deliberately a single-host queue backed by a local SQLite database, not a distributed multi-host broker. Run one or more workers against the same local database; do not put the SQLite file on a network filesystem. The scheduler is a separate process concern: cron or a system scheduler should invoke `amn jobs schedule tick` periodically, independently of the dashboard.
+
+## Telegram operator alerts
+
+The Telegram publisher can also send operational alerts to a separate private operator chat. Keep this destination separate from the public publishing channel: set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALERT_CHAT_ID` in the process environment, then run:
+
+```bash
+amn alerts check --root .
+```
+
+The checker detects terminally failed queue jobs, running jobs with expired worker leases, ready queue jobs that remain unclaimed beyond the stale threshold, repeated delivery failures (at least three failed attempts in 30 minutes), stalled TikTok operations, stalled Instagram containers, and Instagram outcomes requiring manual reconciliation. Queue-stall detection ignores jobs whose retry delay has not elapsed. The stale threshold defaults to 15 minutes and can be overridden with `--stale-after-seconds` (60–86400). Incidents are persisted in `operator_alerts` inside `build/jobs.sqlite3`, deduplicated by stable incident identity, automatically marked resolved when the condition clears, and re-notified if the same incident reopens. Active incidents have a six-hour notification cooldown; failed notification attempts are retried no more than once every five minutes. Alert delivery is best-effort and never runs inside a publishing operation. Messages contain bounded operational identifiers and status only, not captions, tokens, raw provider errors, or source content.
+
+For unattended checks, add a durable alert schedule and keep the existing worker running:
+
+```bash
+amn jobs schedule add --id operator-alerts --kind alerts --every-seconds 300 --root .
+amn jobs schedule tick --root .
+amn jobs worker --root .
+```
+
+Invoke `amn jobs schedule tick --root .` periodically from cron/systemd (for example, once per minute). The alert job runs in the same durable queue as fetch, pipeline, and publish work. The dashboard's Operator alerts section and `GET /api/alerts` expose sanitized active/resolved history. Telegram credentials are not read from the AMN JSON config.
+
+### Queue backup and recovery
+
+The durable queue, recurring schedules, delivery-operation state, and operator-alert history live in `build/jobs.sqlite3`. Use SQLite's online backup API through the AMN CLI to capture a consistent snapshot, including committed WAL contents:
+
+```bash
+mkdir -p backups
+BACKUP="./backups/amn-$(date -u +%Y%m%dT%H%M%SZ).sqlite3"
+amn jobs backup --output "$BACKUP" --root .
+amn jobs verify-backup --input "$BACKUP" --root .
+```
+
+Before restoring, stop every AMN worker and scheduler process. Restore validates SQLite integrity and the AMN queue schema, refuses to overwrite a database with active job leases, and creates a timestamped pre-restore safety copy automatically:
+
+```bash
+BACKUP="$(find ./backups -maxdepth 1 -type f -name 'amn-*.sqlite3' -print | sort | tail -n 1)"
+test -n "$BACKUP"
+amn jobs restore --input "$BACKUP" --confirm-no-workers --root .
+```
+
+Keep backups outside the workspace's ignored runtime directories and copy them to durable storage on a separate host or account. A backup on the same disk is not disaster recovery. Periodically verify a backup and perform a restore drill against a disposable workspace; never test recovery against the live queue.
+
+GitHub Actions Telegram publishing is separately opt-in. Add repository secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, then set repository variable `AMN_TELEGRAM_PUBLISH=true`. The workflow maps those secrets into the publishing step explicitly and fails that step if publishing is enabled but either secret is missing. Keep this publishing chat distinct from `TELEGRAM_ALERT_CHAT_ID`.
+
+## Diagnostics dashboard
+
+```bash
+AMN_ROOT="$PWD" AMN_WATERMARK_TEXT="@yourhandle" amn-dashboard --host 127.0.0.1 --port 8765
+```
+
+Open `http://127.0.0.1:8765`. The optional FastAPI dashboard exposes workspace counts, recent rejection reasons, durable job counts and recent job states, recurring schedule status and next-run times, a redacted configuration view, validated local config updates, and a pipeline trigger. It binds to loopback only, rejects non-loopback Host headers and cross-origin requests, and prevents overlapping pipeline runs. API secrets stay in environment variables and are never returned by the config endpoint. Do not expose it to a network without adding authentication and TLS.
+
+## Native Reddit image publishing (Devvit)
+
+The standard Reddit Data API publisher creates link posts pointing to hosted images. For native Reddit image posts, AMN includes an optional Devvit bridge in `integrations/reddit-devvit/`. It is a separate Reddit app runtime, not a replacement for the existing OAuth ingestion or link-post publisher.
+
+The bridge requires Reddit approval for limited-access external endpoints, installation by a moderator in each target subreddit, and a managed Devvit app token. It publishes as the Devvit app account. Configure the installation-specific publish endpoint in `AMN_REDDIT_DEVVIT_URL`, the managed token in `AMN_REDDIT_DEVVIT_TOKEN`, and an exact public-media hostname allowlist in the Devvit app settings. The AMN dashboard can display provider-side delivery status when those environment variables are configured.
+
+Build and validate the bridge from its directory:
+
+```bash
+cd integrations/reddit-devvit
+npm install
+npm run typecheck
+npm test
+npm run build
+npx devvit login
+npm run playtest
+```
+
+Do not run `npx devvit publish` until Reddit has granted external-endpoint access and the app has passed an authenticated playtest. Delivery reservations fail closed when a submission is ambiguous; operators must independently verify the subreddit and use the authenticated reconciliation endpoint. Reconciliation events are retained in an append-only Redis audit hash. Reddit's current media API does not expose deletion for uploaded assets, so failed or ambiguous submissions may leave unused hosted media behind. See [the Devvit bridge guide](integrations/reddit-devvit/README.md) for installation, settings, and recovery details.
+
+## Security and operational notes
+
+- Use dedicated platform bot/app credentials with the minimum scopes.
+- Never commit `config/amn.json`, bot tokens, app passwords, or OAuth refresh tokens.
+- Telegram bots must be added to the destination channel with permission to post.
+- Reddit ingestion and publishing use an authenticated Reddit Data API user token and a truthful, descriptive `AMN_REDDIT_USER_AGENT` in Reddit's documented format. The diagnostics check also calls `/api/v1/me`, so configure `identity` and `read`; publishing additionally requires `submit`. For automatic S3 uploads, configure the Reddit target and storage block and use `amn publish --routed`; direct `--platform reddit` mode assumes the image is already reachable at the configured public URL. The subreddit must allow the account to submit. AMN currently creates a **link post** pointing at the publicly hosted image; this is not a native Reddit image upload. Configure a public HTTPS media URL, and optionally S3 storage, so Reddit can fetch the image. Reddit API access and commercial use remain subject to Reddit approval and its current developer terms. Reddit's Data API requires OAuth and a descriptive User-Agent; AMN no longer makes anonymous Reddit listing requests. AMN does not automate OAuth consent or refresh tokens; supply a valid access token and rotate it outside AMN.
+- Facebook publishing requires a Page access token for a Page where the authorizing person has the CREATE_CONTENT task, plus the pages_manage_posts, pages_read_engagement, and pages_show_list permissions. Keep the Page token in FACEBOOK_PAGE_ACCESS_TOKEN; it is never stored in AMN config.
+- X publishing requires an OAuth 2.0 user access token with `tweet.write`, `media.write`, and `users.read` scopes. Store it in `X_USER_ACCESS_TOKEN`. AMN uploads a JPEG through X API v2's simple image-upload endpoint (5 MiB limit), then creates the Post with the returned media ID. A successful media upload followed by a failed Post request can leave an unused media object; a crash after Post acceptance but before local state persistence can still produce an at-least-once duplicate.
+- Instagram/TikTok reposting must respect creator rights, platform policies, and required attribution.
+- Reddit's public endpoint does not expose view counts; AMN does not fabricate an engagement denominator. Reddit downloads are streamed and capped at 25 MiB per asset.
+- Dynamic config rejects unknown target fields, plaintext credential fields, invalid platform names, malformed routes, and non-integer threshold values.
+- Reddit subreddit ingestion is implemented. Arbitrary Instagram/TikTok competitor-profile scraping is not; use approved platform APIs and authorized accounts.

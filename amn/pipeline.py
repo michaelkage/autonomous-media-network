@@ -1,11 +1,4 @@
-"""Pipeline orchestration and CLI.
-
-inbox/<name>.jpg  +  inbox/<name>.json
-    -> vet
-    -> passed:  watermark, write outbox/<name>.jpg, delete source
-    -> failed:  move to rejected/ with reasons in the manifest
-    -> build/manifest.json   (the hand-off boundary for any future publisher)
-"""
+"""Pipeline orchestration and CLI."""
 
 from __future__ import annotations
 
@@ -15,13 +8,17 @@ import json
 import os
 import shutil
 import sys
+import tempfile
+import threading
+import time
 import tomllib
+import uuid
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 from .intelligence import Captioner, DuplicateDetector
 from .vetting import Engagement, Thresholds, Verdict, vet
@@ -30,31 +27,46 @@ from .watermark import apply_watermark
 __all__ = ["RunResult", "load_thresholds", "run", "write_manifest", "main"]
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
-INBOX_DIR = "inbox"
-OUTBOX_DIR = "outbox"
-REJECTED_DIR = "rejected"
-BUILD_DIR = "build"
+INBOX_DIR, OUTBOX_DIR, REJECTED_DIR, BUILD_DIR = "inbox", "outbox", "rejected", "build"
 WATERMARK_ENV = "AMN_WATERMARK_TEXT"
 JPEG_QUALITY = 92
 
 
 @dataclass
 class RunResult:
-    """Everything one run did. Serialised to build/manifest.json."""
-
     passed: list[dict[str, Any]] = field(default_factory=list)
     rejected: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 
+def _atomic_write(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
 def load_thresholds(root: Path) -> Thresholds:
-    """Read [tool.amn] from the project's pyproject.toml, or use defaults."""
-    pyproject = root / "pyproject.toml"
-    if not pyproject.is_file():
-        return Thresholds()
-    with pyproject.open("rb") as handle:
-        config = tomllib.load(handle)
-    return Thresholds.from_mapping(config.get("tool", {}).get("amn", {}))
+    pyproject = Path(root) / "pyproject.toml"
+    values: dict[str, Any] = {}
+    if pyproject.is_file():
+        with pyproject.open("rb") as handle:
+            config = tomllib.load(handle)
+        values.update(config.get("tool", {}).get("amn", {}))
+    dynamic = root / "config" / "amn.json"
+    if dynamic.is_file():
+        from .distribution import validate_config
+
+        runtime = validate_config(json.loads(dynamic.read_text(encoding="utf-8")))
+        values.update(runtime.get("thresholds", {}))
+    return Thresholds.from_mapping(values)
 
 
 def _sha256(path: Path) -> str:
@@ -66,22 +78,17 @@ def _sha256(path: Path) -> str:
 
 
 def _read_engagement(source: Path) -> tuple[Engagement | None, str | None]:
-    """Load the sidecar metrics manifest. Returns (engagement, reason_if_broken)."""
     sidecar = source.with_suffix(".json")
     if not sidecar.is_file():
         return None, None
     try:
         data = json.loads(sidecar.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return None, f"metrics manifest is unreadable: {exc}"
-    try:
         return Engagement.from_mapping(data), None
-    except ValueError as exc:
-        return None, f"metrics manifest is invalid: {exc}"
+    except (OSError, ValueError) as exc:
+        return None, f"metrics manifest is invalid or unreadable: {exc}"
 
 
 def _retire(source: Path, sidecar: Path, destination: Path) -> None:
-    """Move an asset out of the inbox so the queue always drains."""
     destination.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source), str(destination / source.name))
     if sidecar.exists():
@@ -96,66 +103,86 @@ def process_image(
     dry_run: bool = False,
     detector: DuplicateDetector | None = None,
 ) -> tuple[Verdict, dict[str, Any]]:
-    """Vet one asset and, if it passes, write the watermarked copy.
-
-    Raises:
-        UnidentifiedImageError: the file is not a decodable image.
-        OSError: the file could not be read or written.
-    """
     with Image.open(source) as image:
         image.load()
-
-        # 1. Duplicate Check
-        if detector and detector.is_duplicate(image):
-            return Verdict(
-                passed=False,
-                reasons=("duplicate image detected via dHash",),
-                width=image.width,
-                height=image.height,
-            ), {}
-
+        if detector:
+            distance = detector.distance_to_known(image)
+            if distance is not None and distance <= detector.max_distance:
+                reason = (
+                    "duplicate image detected via dHash "
+                    f"(distance {distance}, threshold {detector.max_distance})"
+                )
+                return Verdict(False, (reason,), image.width, image.height), {}
         engagement, broken_metrics = _read_engagement(source)
         verdict = vet(image.format, image.size, engagement, thresholds)
-        if broken_metrics and not verdict.passed:
-            verdict = replace(verdict, reasons=verdict.reasons + (broken_metrics,))
+        if broken_metrics:
+            verdict = replace(verdict, passed=False, reasons=verdict.reasons + (broken_metrics,))
         if not verdict.passed:
             return verdict, {}
 
-        output = outbox / f"{source.stem}.jpg"
+        source_digest = _sha256(source)
+        output = outbox / f"{source.stem[:80]}.jpg"
+        rendered: bytes | None = None
         if not dry_run:
             outbox.mkdir(parents=True, exist_ok=True)
             watermarked = apply_watermark(image, watermark_text)
-            watermarked.convert("RGB").save(output, "JPEG", quality=JPEG_QUALITY, optimize=True)
+            import io
 
-    # 2. Captioning
-    metrics_data = {}
-    if verdict.engagement:
-        metrics_data = {
-            "views": verdict.engagement.views,
-            "likes": verdict.engagement.likes,
-            "comments": verdict.engagement.comments,
-            "shares": verdict.engagement.shares,
-        }
-    caption = Captioner.generate(image, metrics_data)
+            buffer = io.BytesIO()
+            watermarked.convert("RGB").save(buffer, "JPEG", quality=JPEG_QUALITY, optimize=True)
+            rendered = buffer.getvalue()
+            if output.exists() and output.read_bytes() != rendered:
+                output = outbox / f"{source.stem[:80]}-{source_digest[:12]}.jpg"
+            if output.exists():
+                if output.read_bytes() != rendered:
+                    raise FileExistsError(f"refusing to overwrite existing output: {output}")
+            else:
+                _atomic_write(output, rendered)
+        caption = Captioner.generate(
+            image.copy(),
+            {
+                "likes": engagement.likes if engagement else 0,
+                "comments": engagement.comments if engagement else 0,
+                "shares": engagement.shares if engagement else 0,
+                "views": engagement.views if engagement else 0,
+            },
+        )
 
     record: dict[str, Any] = {
         "source": source.name,
+        "source_sha256": source_digest,
         "output": f"{outbox.name}/{output.name}",
         "width": verdict.width,
         "height": verdict.height,
         "caption": caption,
     }
-    if verdict.engagement is not None:
-        record["engagement_rate"] = round(verdict.engagement.rate, 6)
+    try:
+        sidecar_data = json.loads(source.with_suffix(".json").read_text(encoding="utf-8"))
+        for key in ("categories", "tags"):
+            values = sidecar_data.get(key, [])
+            if isinstance(values, list):
+                record[key] = [str(value) for value in values if isinstance(value, str)]
+        if isinstance(sidecar_data.get("source"), str):
+            record["source_platform"] = sidecar_data["source"]
+        for key in ("subreddit", "source_id", "permalink"):
+            if isinstance(sidecar_data.get(key), str):
+                record[key] = sidecar_data[key]
+    except (OSError, json.JSONDecodeError, AttributeError):
+        pass
+    if engagement is not None:
+        record["engagement_rate"] = round(engagement.rate, 6)
+        record["metrics"] = {
+            "views": engagement.views,
+            "likes": engagement.likes,
+            "comments": engagement.comments,
+            "shares": engagement.shares,
+        }
     if not dry_run:
         record["sha256"] = _sha256(output)
-        if detector:
-            detector.record(image)
     return verdict, record
 
 
 def write_manifest(build_dir: Path, result: RunResult) -> Path:
-    """Write the run manifest: the contract any future publisher consumes."""
     build_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -169,8 +196,47 @@ def write_manifest(build_dir: Path, result: RunResult) -> Path:
         "errors": result.errors,
     }
     manifest = build_dir / "manifest.json"
-    manifest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    _atomic_write(manifest, (json.dumps(payload, indent=2) + "\n").encode())
     return manifest
+
+
+def _load_checkpoint(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("pipeline checkpoint must contain a list")
+    entries: list[dict[str, Any]] = []
+    for entry in payload:
+        outcome = entry.get("outcome") if isinstance(entry, dict) else None
+        record = entry.get("record") if isinstance(entry, dict) else None
+        valid_record = isinstance(record, str) if outcome == "error" else isinstance(record, dict)
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("source_name"), str)
+            or not entry["source_name"]
+            or not isinstance(entry.get("source_sha256"), str)
+            or len(entry["source_sha256"]) != 64
+            or outcome not in {"passed", "rejected", "error"}
+            or not valid_record
+        ):
+            raise ValueError("pipeline checkpoint contains an invalid entry")
+        entries.append(entry)
+    return entries
+
+
+def _save_checkpoint(path: Path, entries: list[dict[str, Any]]) -> None:
+    _atomic_write(path, (json.dumps(entries, indent=2) + "\n").encode())
+
+
+def _restore_checkpoint_entry(result: RunResult, entry: dict[str, Any]) -> None:
+    outcome = entry["outcome"]
+    if outcome == "passed":
+        result.passed.append(entry["record"])
+    elif outcome == "rejected":
+        result.rejected.append(entry["record"])
+    else:
+        result.errors.append(entry["record"])
 
 
 def run(
@@ -180,126 +246,530 @@ def run(
     watermark_text: str = "",
     dry_run: bool = False,
 ) -> RunResult:
-    """Process every asset in the inbox. See module docstring for the flow."""
-    root = Path(root)
+    root = Path(root).resolve()
     thresholds = thresholds or load_thresholds(root)
-    inbox, outbox, rejected = root / INBOX_DIR, root / OUTBOX_DIR, root / REJECTED_DIR
+    inbox, outbox, rejected = (root / name for name in (INBOX_DIR, OUTBOX_DIR, REJECTED_DIR))
     result = RunResult()
-    detector = DuplicateDetector(root / BUILD_DIR / "hashes.json")
-
     if not inbox.is_dir():
         result.errors.append(f"inbox directory not found: {inbox}")
         return result
+    checkpoint_path = root / BUILD_DIR / "pipeline-checkpoint.json"
+    try:
+        checkpoint = [] if dry_run else _load_checkpoint(checkpoint_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        result.errors.append(f"pipeline checkpoint is invalid or unreadable: {exc}")
+        return result
+    completed = {(entry["source_name"], entry["source_sha256"]): entry for entry in checkpoint}
+    for entry in checkpoint:
+        _restore_checkpoint_entry(result, entry)
+    runtime_config = root / "config" / "amn.json"
+    max_distance = 5
+    if runtime_config.is_file():
+        from .distribution import validate_config
 
+        runtime = validate_config(json.loads(runtime_config.read_text(encoding="utf-8")))
+        max_distance = int(runtime.get("thresholds", {}).get("max_distance", 5))
+    detector = DuplicateDetector(root / BUILD_DIR / "hashes.json", max_distance=max_distance)
     sources = sorted(
-        path for path in inbox.iterdir() if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+        p for p in inbox.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES
     )
+    if sources and not dry_run and not watermark_text.strip():
+        result.errors.append(f"watermark required: set --watermark or {WATERMARK_ENV}")
+        return result
     for source in sources:
         sidecar = source.with_suffix(".json")
+        source_digest = _sha256(source)
+        source_key = (source.name, source_digest)
+        previous = completed.get(source_key)
+        if previous is not None:
+            if previous["outcome"] == "passed":
+                detector.record_from_path(source)
+                source.unlink(missing_ok=True)
+                sidecar.unlink(missing_ok=True)
+            else:
+                _retire(source, sidecar, rejected)
+            continue
         try:
             verdict, record = process_image(
                 source, outbox, thresholds, watermark_text, dry_run, detector=detector
             )
-        except (UnidentifiedImageError, OSError) as exc:
-            # Retired rather than retried: a file that cannot be decoded now
-            # never will, and leaving it would re-break every future run.
-            result.errors.append(f"{source.name}: {exc}")
-            if not dry_run:
-                _retire(source, sidecar, rejected)
-            continue
-
-        if verdict.passed:
-            result.passed.append(record)
-            if not dry_run:
-                source.unlink()
+            if verdict.passed:
+                entry = {
+                    "source_name": source.name,
+                    "source_sha256": source_digest,
+                    "outcome": "passed",
+                    "record": record,
+                }
+                result.passed.append(record)
+            else:
+                rejected_record = {
+                    "source": source.name,
+                    "reasons": list(verdict.reasons),
+                }
+                entry = {
+                    "source_name": source.name,
+                    "source_sha256": source_digest,
+                    "outcome": "rejected",
+                    "record": rejected_record,
+                }
+                result.rejected.append(rejected_record)
+        except (OSError, ValueError) as exc:
+            error = f"{source.name}: {exc}"
+            entry = {
+                "source_name": source.name,
+                "source_sha256": source_digest,
+                "outcome": "error",
+                "record": error,
+            }
+            result.errors.append(error)
+        if not dry_run:
+            checkpoint.append(entry)
+            completed[source_key] = entry
+            _save_checkpoint(checkpoint_path, checkpoint)
+            if entry["outcome"] == "passed":
+                detector.record_from_path(source)
+                source.unlink(missing_ok=True)
                 sidecar.unlink(missing_ok=True)
-        else:
-            result.rejected.append({"source": source.name, "reasons": list(verdict.reasons)})
-            if not dry_run:
+            else:
                 _retire(source, sidecar, rejected)
-
     if not dry_run:
         write_manifest(root / BUILD_DIR, result)
+        checkpoint_path.unlink(missing_ok=True)
     return result
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="amn", description="Vet and watermark queued media.")
-    subparsers = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(dest="command")
+    run_parser = sub.add_parser("run")
+    run_parser.add_argument("--root", type=Path, default=Path.cwd())
+    run_parser.add_argument("--watermark", default="")
+    run_parser.add_argument("--dry-run", action="store_true")
+    pub = sub.add_parser("publish")
+    pub.add_argument(
+        "--platform",
+        choices=["mock", "bluesky", "telegram", "facebook", "x", "reddit", "instagram", "tiktok"],
+    )
+    pub.add_argument("--routed", action="store_true", help="dispatch using config/amn.json routes")
+    pub.add_argument("--root", type=Path, default=Path.cwd())
+    doctor = sub.add_parser(
+        "doctor", help="run read-only publishing and media-host preflight checks"
+    )
+    doctor.add_argument("--root", type=Path, default=Path.cwd())
+    instagram_reconcile = sub.add_parser(
+        "instagram-reconcile",
+        help="inspect and manually resolve ambiguous Instagram publications",
+    )
+    instagram_commands = instagram_reconcile.add_subparsers(dest="instagram_command", required=True)
+    instagram_list = instagram_commands.add_parser(
+        "list", help="list Instagram operations awaiting manual reconciliation"
+    )
+    instagram_list.add_argument("--limit", type=int, default=100)
+    instagram_list.add_argument("--root", type=Path, default=Path.cwd())
+    instagram_resolve = instagram_commands.add_parser(
+        "resolve", help="record a verified Instagram publication outcome"
+    )
+    instagram_resolve.add_argument("--operation-key", required=True)
+    instagram_resolve.add_argument(
+        "--resolution", required=True, choices=["published", "not_published"]
+    )
+    instagram_resolve.add_argument("--actor", default=os.environ.get("USER", "local-operator"))
+    instagram_resolve.add_argument("--note", required=True)
+    instagram_resolve.add_argument("--root", type=Path, default=Path.cwd())
+    jobs = sub.add_parser("jobs", help="enqueue, inspect, and run durable jobs")
+    job_commands = jobs.add_subparsers(dest="jobs_command", required=True)
+    enqueue = job_commands.add_parser(
+        "enqueue", help="enqueue a pipeline, fetch, or routed publish job"
+    )
+    enqueue.add_argument(
+        "--kind", choices=["pipeline", "fetch", "publish", "alerts"], required=True
+    )
+    enqueue.add_argument("--query", help="one subreddit for fetch jobs")
+    enqueue.add_argument("--limit", type=int, default=10)
+    enqueue.add_argument("--dedupe-key")
+    enqueue.add_argument("--root", type=Path, default=Path.cwd())
+    worker = job_commands.add_parser("worker", help="run queued jobs")
+    worker.add_argument("--once", action="store_true", help="process at most one job then exit")
+    worker.add_argument("--poll-interval", type=float, default=2.0)
+    worker.add_argument("--lease-seconds", type=float, default=3600.0)
+    worker.add_argument("--root", type=Path, default=Path.cwd())
+    job_list = job_commands.add_parser("list", help="show recent durable jobs")
+    job_list.add_argument("--status", choices=["pending", "running", "succeeded", "failed"])
+    job_list.add_argument("--limit", type=int, default=50)
+    job_list.add_argument("--root", type=Path, default=Path.cwd())
 
-    # Run command
-    run_parser = subparsers.add_parser("run", help="Vet and watermark queued media.")
-    run_parser.add_argument(
-        "--root", type=Path, default=Path.cwd(), help="project root containing inbox/"
+    schedule = job_commands.add_parser("schedule", help="manage recurring durable jobs")
+    schedule_commands = schedule.add_subparsers(dest="schedule_command", required=True)
+    schedule_add = schedule_commands.add_parser("add", help="create a recurring job schedule")
+    schedule_add.add_argument("--id", required=True)
+    schedule_add.add_argument(
+        "--kind", choices=["pipeline", "fetch", "publish", "alerts"], required=True
     )
-    run_parser.add_argument(
-        "--watermark", default="", help=f"watermark text (defaults to ${WATERMARK_ENV})"
-    )
-    run_parser.add_argument(
-        "--dry-run", action="store_true", help="vet only; write, move and delete nothing"
-    )
+    schedule_add.add_argument("--every-seconds", type=float, required=True)
+    schedule_add.add_argument("--query", help="one subreddit for fetch schedules")
+    schedule_add.add_argument("--limit", type=int, default=10)
+    schedule_add.add_argument("--root", type=Path, default=Path.cwd())
+    schedule_list = schedule_commands.add_parser("list", help="list recurring schedules")
+    schedule_list.add_argument("--root", type=Path, default=Path.cwd())
+    schedule_disable = schedule_commands.add_parser("disable", help="disable a recurring schedule")
+    schedule_disable.add_argument("--id", required=True)
+    schedule_disable.add_argument("--root", type=Path, default=Path.cwd())
+    schedule_enable = schedule_commands.add_parser("enable", help="re-enable a recurring schedule")
+    schedule_enable.add_argument("--id", required=True)
+    schedule_enable.add_argument("--root", type=Path, default=Path.cwd())
+    schedule_tick = schedule_commands.add_parser("tick", help="enqueue schedules that are due")
+    schedule_tick.add_argument("--limit", type=int, default=100)
+    schedule_tick.add_argument("--root", type=Path, default=Path.cwd())
 
-    # Publish command
-    pub_parser = subparsers.add_parser("publish", help="Publish manifest assets to social media.")
-    pub_parser.add_argument(
-        "--platform", required=True, choices=["mock", "bluesky"], help="Platform to publish to"
+    backup = job_commands.add_parser("backup", help="create a consistent SQLite queue backup")
+    backup.add_argument("--output", type=Path, required=True)
+    backup.add_argument("--root", type=Path, default=Path.cwd())
+    verify_backup = job_commands.add_parser("verify-backup", help="validate a queue backup")
+    verify_backup.add_argument("--input", type=Path, required=True)
+    verify_backup.add_argument("--root", type=Path, default=Path.cwd())
+    restore = job_commands.add_parser("restore", help="restore queue state from a verified backup")
+    restore.add_argument("--input", type=Path, required=True)
+    restore.add_argument(
+        "--confirm-no-workers",
+        action="store_true",
+        help="confirm all AMN workers and scheduler processes are stopped",
     )
-    pub_parser.add_argument(
-        "--root", type=Path, default=Path.cwd(), help="project root containing build/"
-    )
+    restore.add_argument("--root", type=Path, default=Path.cwd())
 
-    # Fetch command
-    fetch_parser = subparsers.add_parser("fetch", help="Fetch new media from sources.")
-    fetch_parser.add_argument(
-        "--source", required=True, choices=["reddit"], help="Source to fetch from"
+    alerts = sub.add_parser(
+        "alerts", help="inspect incidents and send deduplicated operator alerts"
     )
-    fetch_parser.add_argument(
-        "--query",
-        default="earthporn",
-        help="Subreddit name for reddit, search term for pexels",
+    alert_commands = alerts.add_subparsers(dest="alerts_command", required=True)
+    alert_check = alert_commands.add_parser(
+        "check", help="check operational health and notify Telegram"
     )
-    fetch_parser.add_argument("--limit", type=int, default=10, help="Number of assets to fetch")
-    fetch_parser.add_argument(
-        "--root", type=Path, default=Path.cwd(), help="project root containing inbox/"
-    )
+    alert_check.add_argument("--stale-after-seconds", type=int, default=900)
+    alert_check.add_argument("--cooldown-seconds", type=int, default=21600)
+    alert_check.add_argument("--root", type=Path, default=Path.cwd())
 
+    fetch = sub.add_parser("fetch")
+    fetch.add_argument("--source", required=True, choices=["reddit"])
+    fetch.add_argument("--query", help="one subreddit; omit to fetch configured Reddit sources")
+    fetch.add_argument("--limit", type=int, default=10)
+    fetch.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
 
-    if args.command == "run":
-        watermark_text = args.watermark or os.environ.get(WATERMARK_ENV, "")
-        result = run(args.root, watermark_text=watermark_text, dry_run=args.dry_run)
+    if args.command == "alerts":
+        from .operator_alerts import check_operator_alerts
 
+        try:
+            result = check_operator_alerts(
+                args.root / BUILD_DIR / "jobs.sqlite3",
+                bot_token=os.environ.get("TELEGRAM_BOT_TOKEN"),
+                chat_id=os.environ.get("TELEGRAM_ALERT_CHAT_ID"),
+                stale_after_seconds=args.stale_after_seconds,
+                cooldown_seconds=args.cooldown_seconds,
+            )
+        except (ValueError, OSError) as exc:
+            parser.error(str(exc))
+        print(f"operator alerts: {result}")
+        if not result["notifications_configured"] and result["active"]:
+            print(
+                "warning: incidents were recorded but Telegram notifications are not configured "
+                "(TELEGRAM_BOT_TOKEN/TELEGRAM_ALERT_CHAT_ID)",
+                file=sys.stderr,
+            )
+        return 0 if not result["failed"] else 1
+
+    if args.command == "instagram-reconcile":
+        from .instagram_reconciliation import (
+            list_instagram_reconciliation,
+            resolve_instagram_operation,
+        )
+
+        database = args.root / BUILD_DIR / "jobs.sqlite3"
+        if args.instagram_command == "list":
+            try:
+                operations = list_instagram_reconciliation(database, limit=args.limit)
+            except ValueError as exc:
+                parser.error(str(exc))
+            if not operations:
+                print("no Instagram operations require reconciliation")
+                return 0
+            for operation in operations:
+                print(
+                    f"{operation['operation_key']} "
+                    f"container={operation['container_id']} "
+                    f"status={operation['status']} "
+                    "updated_at="
+                    f"{datetime.fromtimestamp(operation['updated_at'], UTC).isoformat()} "
+                    f"output={operation['output'] or '-'}"
+                )
+            return 0
+        try:
+            result = resolve_instagram_operation(
+                database,
+                operation_key=args.operation_key,
+                resolution=args.resolution,
+                actor=args.actor,
+                note=args.note,
+            )
+        except (ValueError, OSError) as exc:
+            parser.error(str(exc))
+        print(
+            f"resolved Instagram operation {result['operation_key']} "
+            f"container={result['container_id']} "
+            f"resolution={result['resolution']} status={result['status']}"
+        )
+        return 0
+
+    if args.command == "jobs":
+        from .jobs import JobQueue
+
+        if args.jobs_command in {"backup", "verify-backup", "restore"}:
+            from .backup import backup_database, restore_database, verify_database
+
+            database = args.root / BUILD_DIR / "jobs.sqlite3"
+            try:
+                if args.jobs_command == "backup":
+                    destination = backup_database(database, args.output)
+                    print(f"queue backup created: {destination}")
+                elif args.jobs_command == "verify-backup":
+                    verified = verify_database(args.input)
+                    print(f"queue backup verified: {verified}")
+                else:
+                    restored, safety_copy = restore_database(
+                        args.input,
+                        database,
+                        confirm_no_workers=args.confirm_no_workers,
+                    )
+                    print(f"queue database restored: {restored}")
+                    if safety_copy is not None:
+                        print(f"pre-restore safety copy: {safety_copy}")
+            except (OSError, ValueError) as exc:
+                print(f"queue backup operation failed: {exc}", file=sys.stderr)
+                return 1
+            return 0
+
+        queue = JobQueue(args.root / BUILD_DIR / "jobs.sqlite3")
+        if args.jobs_command == "schedule":
+            if args.schedule_command == "add":
+                if args.every_seconds <= 0:
+                    parser.error("--every-seconds must be positive")
+                if args.limit < 1 or args.limit > 100:
+                    parser.error("--limit for schedules must be between 1 and 100")
+                if args.kind != "fetch" and args.query:
+                    parser.error("--query is only valid for fetch schedules")
+                payload: dict[str, Any] = {"root": str(args.root.resolve())}
+                if args.kind == "fetch":
+                    payload.update({"query": args.query, "limit": args.limit})
+                try:
+                    queue.add_schedule(args.id, args.kind, payload, args.every_seconds)
+                except ValueError as exc:
+                    parser.error(str(exc))
+                print(f"created schedule {args.id} ({args.kind}, every {args.every_seconds:g}s)")
+                return 0
+            if args.schedule_command == "list":
+                for item in queue.list_schedules():
+                    state = "enabled" if item["enabled"] else "disabled"
+                    print(
+                        f"{item['id']} {state} {item['kind']} "
+                        f"every={item['interval_seconds']:g}s "
+                        f"next={datetime.fromtimestamp(item['next_run_at'], UTC).isoformat()}"
+                    )
+                return 0
+            if args.schedule_command == "disable":
+                if not queue.disable_schedule(args.id):
+                    parser.error(f"schedule not found or already disabled: {args.id}")
+                print(f"disabled schedule {args.id}")
+                return 0
+            if args.schedule_command == "enable":
+                if not queue.enable_schedule(args.id):
+                    parser.error(f"schedule not found or already enabled: {args.id}")
+                print(f"enabled schedule {args.id}")
+                return 0
+            if args.limit < 1 or args.limit > 1000:
+                parser.error("--limit for schedule tick must be between 1 and 1000")
+            count = queue.enqueue_due_schedules(limit=args.limit)
+            print(f"enqueued {count} due scheduled job(s)")
+            return 0
+
+        if args.jobs_command == "enqueue":
+            if args.limit < 1 or args.limit > 100:
+                parser.error("--limit for jobs enqueue must be between 1 and 100")
+            if args.kind != "fetch" and args.query:
+                parser.error("--query is only valid for fetch jobs")
+            payload: dict[str, Any] = {"root": str(args.root.resolve())}
+            if args.kind == "fetch":
+                payload.update({"query": args.query, "limit": args.limit})
+            job_id = queue.enqueue(args.kind, payload, dedupe_key=args.dedupe_key)
+            print(f"enqueued {args.kind} job {job_id}")
+            return 0
+        if args.jobs_command == "list":
+            for job in queue.list(status=args.status, limit=args.limit):
+                print(
+                    f"{job['id']} {job['status']} {job['kind']} "
+                    f"attempt={job['attempts']}/{job['max_attempts']} "
+                    f"error={job['last_error'] or '-'}"
+                )
+            print(f"job counts: {queue.counts()}")
+            return 0
+        if args.poll_interval <= 0 or args.lease_seconds < 3:
+            parser.error("--poll-interval must be positive and --lease-seconds at least 3")
+        worker_id = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+
+        def execute_job(job: dict[str, Any]) -> None:
+            payload = job["payload"]
+            job_root = Path(payload.get("root", args.root)).resolve()
+            if job["kind"] == "pipeline":
+                result = run(job_root, watermark_text=os.environ.get(WATERMARK_ENV, ""))
+                if result.errors:
+                    raise RuntimeError("; ".join(result.errors))
+                print(f"pipeline job: {len(result.passed)} passed, {len(result.rejected)} rejected")
+            elif job["kind"] == "fetch":
+                from .fetchers.reddit import RedditFetcher
+
+                query = payload.get("query")
+                if query:
+                    sources = [query]
+                else:
+                    from .distribution import load_config, validate_config
+
+                    config = validate_config(load_config(job_root / "config" / "amn.json"))
+                    sources = config.get("sources", {}).get("reddit", [])
+                if not sources:
+                    raise RuntimeError("no Reddit sources configured for fetch job")
+                reddit_token = os.environ.get("REDDIT_USER_ACCESS_TOKEN")
+                reddit_user_agent = os.environ.get("AMN_REDDIT_USER_AGENT")
+                if not reddit_token or not reddit_user_agent:
+                    raise RuntimeError(
+                        "REDDIT_USER_ACCESS_TOKEN and AMN_REDDIT_USER_AGENT are required "
+                        "for Reddit Data API access"
+                    )
+                fetcher = RedditFetcher(reddit_user_agent, access_token=reddit_token)
+                total = sum(
+                    fetcher.fetch(source, int(payload.get("limit", 10)), job_root / INBOX_DIR)
+                    for source in sources
+                )
+                print(f"fetch job: downloaded {total} assets from {len(sources)} subreddit(s)")
+            elif job["kind"] == "publish":
+                from .distribution import publish_routed_manifest
+
+                print(f"publish job: {publish_routed_manifest(job_root)}")
+            elif job["kind"] == "alerts":
+                from .operator_alerts import check_operator_alerts
+
+                result = check_operator_alerts(
+                    job_root / BUILD_DIR / "jobs.sqlite3",
+                    bot_token=os.environ.get("TELEGRAM_BOT_TOKEN"),
+                    chat_id=os.environ.get("TELEGRAM_ALERT_CHAT_ID"),
+                )
+                print(f"operator alert job: {result}")
+            else:
+                raise ValueError(f"unsupported job kind: {job['kind']}")
+
+        def process_one() -> bool:
+            job = queue.claim(worker_id, lease_seconds=args.lease_seconds)
+            if job is None:
+                return False
+            stop_heartbeat = threading.Event()
+
+            def keep_lease_alive() -> None:
+                interval = max(1.0, args.lease_seconds / 3)
+                while not stop_heartbeat.wait(interval):
+                    if not queue.heartbeat(job["id"], worker_id, lease_seconds=args.lease_seconds):
+                        return
+
+            heartbeat = threading.Thread(target=keep_lease_alive, daemon=True)
+            heartbeat.start()
+            try:
+                execute_job(job)
+                if not queue.complete(job["id"], worker_id):
+                    print(f"job {job['id']} lost its lease before completion", file=sys.stderr)
+            except Exception as exc:
+                queue.fail(job["id"], worker_id, str(exc))
+                print(f"job {job['id']} failed: {exc}", file=sys.stderr)
+            finally:
+                stop_heartbeat.set()
+                heartbeat.join(timeout=2)
+            return True
+
+        if args.once:
+            process_one()
+            return 0
+        print(f"AMN worker {worker_id} polling {queue.database}")
+        try:
+            while True:
+                if not process_one():
+                    time.sleep(args.poll_interval)
+        except KeyboardInterrupt:
+            print("worker stopped")
+            return 0
+
+    if args.command == "doctor":
+        from .diagnostics import run_diagnostics
+
+        checks = run_diagnostics(args.root)
+        failed = 0
+        for check in checks:
+            status = "OK" if check["ok"] else "FAIL"
+            print(f"[{status}] {check['target']} / {check['check']}: {check['detail']}")
+            failed += not check["ok"]
+        print(f"diagnostics: {len(checks) - failed} passed, {failed} failed")
+        return 1 if failed else 0
+    if args.command == "run":
+        watermark = args.watermark or os.environ.get(WATERMARK_ENV, "")
+        result = run(args.root, watermark_text=watermark, dry_run=args.dry_run)
         print(
             f"amn: {len(result.passed)} passed, "
             f"{len(result.rejected)} rejected, {len(result.errors)} errors"
         )
-        if not watermark_text and result.passed:
-            print(f"amn: no watermark text set (--watermark or ${WATERMARK_ENV})", file=sys.stderr)
         for item in result.rejected:
             print(f"  rejected {item['source']}: {'; '.join(item['reasons'])}")
         for error in result.errors:
             print(f"  error {error}", file=sys.stderr)
         return 1 if result.errors else 0
-
-    elif args.command == "fetch":
-        # Only Reddit is offered: it is the sole source reporting real
-        # per-post engagement, which is what min_likes measures. Pexels was
-        # removed because it publishes no engagement at all, so every asset it
-        # produced was guaranteed to be rejected by the vetting gate.
+    if args.command == "fetch":
         from .fetchers.reddit import RedditFetcher
 
-        user_agent = os.environ.get("REDDIT_USER_AGENT", "amn-fetcher-v1")
-        fetcher = RedditFetcher(user_agent)
-        count = fetcher.fetch(
-            subreddit_name=args.query,
-            limit=args.limit,
-            inbox_dir=args.root / INBOX_DIR,
-        )
-        print(f"successfully fetched {count} assets from r/{args.query}")
-        return 0
+        reddit_token = os.environ.get("REDDIT_USER_ACCESS_TOKEN")
+        reddit_user_agent = os.environ.get("AMN_REDDIT_USER_AGENT")
+        if not reddit_token or not reddit_user_agent:
+            print(
+                "error: REDDIT_USER_ACCESS_TOKEN and AMN_REDDIT_USER_AGENT are required "
+                "for Reddit Data API access",
+                file=sys.stderr,
+            )
+            return 1
+        fetcher = RedditFetcher(reddit_user_agent, access_token=reddit_token)
+        if args.query:
+            sources = [args.query]
+        else:
+            from .distribution import load_config, validate_config
 
-    elif args.command == "publish":
+            config = validate_config(load_config(args.root / "config" / "amn.json"))
+            sources = config.get("sources", {}).get("reddit", [])
+        if not sources:
+            print(
+                "error: no Reddit sources configured; pass --query or set sources.reddit",
+                file=sys.stderr,
+            )
+            return 2
+        total = sum(fetcher.fetch(source, args.limit, args.root / INBOX_DIR) for source in sources)
+        print(f"successfully fetched {total} assets from {len(sources)} configured subreddit(s)")
+        return 0
+    if args.command == "publish":
+        if args.routed:
+            from .distribution import publish_routed_manifest
+
+            totals = publish_routed_manifest(args.root)
+            print(f"routed publishing complete: {totals}")
+            return 0
+        if not args.platform:
+            print("error: --platform or --routed is required", file=sys.stderr)
+            return 2
         from .publish import BlueskyPublisher, MockPublisher, publish_manifest
+        from .publishers.facebook import FacebookPagePublisher
+        from .publishers.instagram import InstagramPublisher
+        from .publishers.reddit import RedditPublisher
+        from .publishers.telegram import TelegramPublisher
+        from .publishers.tiktok import TikTokPublisher
+        from .publishers.x import XPublisher
 
         if args.platform == "mock":
             publisher = MockPublisher()
@@ -310,16 +780,91 @@ def main(argv: list[str] | None = None) -> int:
                 print("error: BLUESKY_HANDLE and BLUESKY_APP_PASSWORD required", file=sys.stderr)
                 return 1
             publisher = BlueskyPublisher(handle, password)
+        elif args.platform == "telegram":
+            token = os.environ.get("TELEGRAM_BOT_TOKEN")
+            chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+            if not token or not chat_id:
+                print("error: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID required", file=sys.stderr)
+                return 1
+            publisher = TelegramPublisher(token, chat_id)
+        elif args.platform == "reddit":
+            token = os.environ.get("REDDIT_USER_ACCESS_TOKEN")
+            subreddit = os.environ.get("REDDIT_SUBREDDIT")
+            media_url = os.environ.get("AMN_PUBLIC_MEDIA_URL")
+            user_agent = os.environ.get("AMN_REDDIT_USER_AGENT")
+            if not token or not subreddit or not media_url or not user_agent:
+                print(
+                    "error: REDDIT_USER_ACCESS_TOKEN, REDDIT_SUBREDDIT, "
+                    "AMN_PUBLIC_MEDIA_URL and AMN_REDDIT_USER_AGENT required",
+                    file=sys.stderr,
+                )
+                return 1
+            publisher = RedditPublisher(token, subreddit, media_url, user_agent)
+        elif args.platform == "x":
+            token = os.environ.get("X_USER_ACCESS_TOKEN")
+            if not token:
+                print("error: X_USER_ACCESS_TOKEN required", file=sys.stderr)
+                return 1
+            publisher = XPublisher(token)
+        elif args.platform == "facebook":
+            token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN")
+            page_id = os.environ.get("FACEBOOK_PAGE_ID")
+            if not token or not page_id:
+                print(
+                    "error: FACEBOOK_PAGE_ACCESS_TOKEN and FACEBOOK_PAGE_ID required",
+                    file=sys.stderr,
+                )
+                return 1
+            publisher = FacebookPagePublisher(token, page_id)
+        elif args.platform == "instagram":
+            token = os.environ.get("INSTAGRAM_ACCESS_TOKEN")
+            user_id = os.environ.get("INSTAGRAM_USER_ID")
+            media_url = os.environ.get("AMN_PUBLIC_MEDIA_URL")
+            if not token or not user_id or not media_url:
+                print(
+                    "error: INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_USER_ID and "
+                    "AMN_PUBLIC_MEDIA_URL required",
+                    file=sys.stderr,
+                )
+                return 1
+            publisher = InstagramPublisher(
+                token,
+                user_id,
+                media_url,
+                operation_db=args.root / BUILD_DIR / "jobs.sqlite3",
+            )
         else:
-            return 1
-
-        count = publish_manifest(args.root / BUILD_DIR / "manifest.json", publisher)
+            if os.environ.get("TIKTOK_DIRECT_POST_ENABLED") != "true":
+                print(
+                    "error: set TIKTOK_DIRECT_POST_ENABLED=true to enable TikTok direct posting",
+                    file=sys.stderr,
+                )
+                return 1
+            token = os.environ.get("TIKTOK_ACCESS_TOKEN")
+            media_url = os.environ.get("AMN_PUBLIC_MEDIA_URL")
+            privacy = os.environ.get("TIKTOK_PRIVACY_LEVEL")
+            if not token or not media_url or not privacy:
+                print(
+                    "error: TIKTOK_ACCESS_TOKEN, AMN_PUBLIC_MEDIA_URL and "
+                    "TIKTOK_PRIVACY_LEVEL required",
+                    file=sys.stderr,
+                )
+                return 1
+            publisher = TikTokPublisher(
+                token,
+                media_url,
+                privacy,
+                direct_post_enabled=os.environ.get("TIKTOK_DIRECT_POST_ENABLED") == "true",
+                rate_limit_db=args.root / BUILD_DIR / "jobs.sqlite3",
+            )
+        manifest_path = args.root / BUILD_DIR / "manifest.json"
+        count = publish_manifest(manifest_path, publisher, root=args.root)
+        if args.platform == "telegram" and count:
+            publisher.publish_document(manifest_path)
         print(f"successfully published {count} assets to {args.platform}")
         return 0
-
-    else:
-        parser.print_help()
-        return 0
+    parser.print_help()
+    return 0
 
 
 if __name__ == "__main__":

@@ -26,9 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.13"
           cache: pip
@@ -47,21 +47,41 @@ jobs:
       # Publishing is irreversible: a post cannot be un-shared, only deleted.
       # Off unless AMN_PUBLISH is explicitly enabled.
       - name: Publish to Bluesky
-        if: vars.AMN_PUBLISH == 'true'
+        id: bluesky
+        if: steps.vet.outputs.exit_code == '0' && vars.AMN_PUBLISH == 'true'
         env:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
         run: |
           if [ -z "$BLUESKY_HANDLE" ] || [ -z "$BLUESKY_APP_PASSWORD" ]; then
-            echo "::warning::AMN_PUBLISH is on but BLUESKY_HANDLE/BLUESKY_APP_PASSWORD are unset, skipping"
-            exit 0
+            echo "::error::AMN_PUBLISH is enabled but BLUESKY_HANDLE/BLUESKY_APP_PASSWORD are unset"
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
           pip install -e ".[bluesky]"
           set +e
           python -m amn.pipeline publish --platform bluesky --root .
-          echo "publish_exit=$?" >> "$GITHUB_OUTPUT"
+          publish_exit=$?
+          echo "exit_code=$publish_exit" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      # Telegram publishing is independently opt-in. The bot credentials are
+      # mapped explicitly from repository secrets; merely creating a secret does
+      # not expose it to this workflow.
+      - name: Publish to Telegram
+        if: steps.vet.outputs.exit_code == '0' && vars.AMN_TELEGRAM_PUBLISH == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "::error::AMN_TELEGRAM_PUBLISH is on but TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID are unset"
+            exit 1
+          fi
+          python -m amn.pipeline publish --platform telegram --root .
 
       - name: Commit results
+        if: always()
         run: |
           git config user.name "amn-bot"
           git config user.email "amn-bot@users.noreply.github.com"
@@ -79,15 +99,15 @@ jobs:
             git push || echo "::warning::could not push results"
           fi
 
-      - name: Fail if vet had errors
-        if: always() && steps.vet.outputs.exit_code != '0'
+      - name: Fail if vetting or publishing failed
+        if: always() && (steps.vet.outputs.exit_code != '0' || steps.bluesky.outcome == 'failure' || (steps.bluesky.outputs.exit_code != '' && steps.bluesky.outputs.exit_code != '0') || steps.telegram.outcome == 'failure')
         run: |
-          echo "::error::vet exited with ${{ steps.vet.outputs.exit_code }}, see manifest"
-          exit ${{ steps.vet.outputs.exit_code }}
+          echo "::error::vet exit=${{ steps.vet.outputs.exit_code }}, Bluesky publish exit=${{ steps.bluesky.outputs.exit_code }}, Telegram outcome=${{ steps.telegram.outcome }}"
+          exit 1
 
       - name: Upload run artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: manifest-${{ github.run_number }}
           path: build/manifest.json

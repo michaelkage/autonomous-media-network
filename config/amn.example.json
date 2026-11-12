@@ -1,0 +1,98 @@
+{
+  "sources": {
+    "reddit": [
+      "earthporn",
+      "wallpapers"
+    ]
+  },
+  "targets": [
+    {
+      "id": "telegram-main",
+      "platform": "telegram",
+      "enabled": false,
+      "chat_id": "@your_channel",
+      "token_env": "TELEGRAM_BOT_TOKEN"
+    },
+    {
+      "id": "reddit-main",
+      "platform": "reddit",
+      "enabled": false,
+      "subreddit": "YOUR_SUBREDDIT",
+      "public_base_url": "https://media.example.com/outbox",
+      "token_env": "REDDIT_USER_ACCESS_TOKEN",
+      "user_agent_env": "AMN_REDDIT_USER_AGENT"
+    },
+    {
+      "id": "reddit-devvit-main",
+      "platform": "reddit_devvit",
+      "enabled": false,
+      "subreddit": "YOUR_SUBREDDIT",
+      "public_base_url": "https://media.example.com/outbox",
+      "bridge_url_env": "AMN_REDDIT_DEVVIT_URL",
+      "bridge_token_env": "AMN_REDDIT_DEVVIT_TOKEN"
+    },
+    {
+      "id": "x-main",
+      "platform": "x",
+      "enabled": false,
+      "token_env": "X_USER_ACCESS_TOKEN"
+    },
+    {
+      "id": "facebook-main",
+      "platform": "facebook",
+      "enabled": false,
+      "facebook_page_id": "YOUR_FACEBOOK_PAGE_ID",
+      "token_env": "FACEBOOK_PAGE_ACCESS_TOKEN"
+    },
+    {
+      "id": "instagram-main",
+      "platform": "instagram",
+      "enabled": false,
+      "instagram_user_id": "YOUR_IG_PROFESSIONAL_ACCOUNT_ID",
+      "public_base_url": "https://media.example.com/outbox",
+      "token_env": "INSTAGRAM_ACCESS_TOKEN"
+    },
+    {
+      "id": "tiktok-main",
+      "platform": "tiktok",
+      "enabled": false,
+      "public_base_url": "https://media.example.com/outbox",
+      "privacy_level": "SELF_ONLY",
+      "direct_post_enabled": false,
+      "token_env": "TIKTOK_ACCESS_TOKEN"
+    }
+  ],
+  "storage": null,
+  "routes": {
+    "default": [],
+    "landscape": [
+      "telegram-main",
+      "facebook-main",
+      "x-main",
+      "reddit-main",
+      "instagram-main",
+      "tiktok-main",
+      "reddit-devvit-main"
+    ],
+    "architecture": [
+      "telegram-main",
+      "instagram-main"
+    ],
+    "earthporn": [
+      "telegram-main",
+      "reddit-main",
+      "instagram-main",
+      "reddit-devvit-main"
+    ],
+    "wallpapers": [
+      "telegram-main",
+      "reddit-main",
+      "tiktok-main",
+      "reddit-devvit-main"
+    ]
+  },
+  "thresholds": {
+    "min_likes": 500,
+    "max_distance": 5
+  }
+}

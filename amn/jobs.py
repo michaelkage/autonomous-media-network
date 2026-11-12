@@ -1,0 +1,481 @@
+"""SQLite-backed durable job queue with leases and retry recovery.
+
+The queue uses only the Python standard library. SQLite transactions make claims
+safe across processes; leases allow another worker to recover jobs after crashes.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import sqlite3
+import time
+import uuid
+from contextlib import closing
+from pathlib import Path
+from typing import Any
+
+__all__ = ["JobQueue"]
+
+
+class JobQueue:
+    """A small, process-safe queue suitable for a single-host AMN deployment."""
+
+    def __init__(self, database: Path, *, busy_timeout: float = 10.0) -> None:
+        self.database = Path(database).resolve()
+        self.busy_timeout = max(0.1, float(busy_timeout))
+        self.database.parent.mkdir(parents=True, exist_ok=True)
+        self._initialize()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(
+            self.database,
+            timeout=self.busy_timeout,
+            isolation_level=None,
+        )
+        connection.row_factory = sqlite3.Row
+        connection.execute(f"PRAGMA busy_timeout = {int(self.busy_timeout * 1000)}")
+        connection.execute("PRAGMA foreign_keys = ON")
+        return connection
+
+    def _initialize(self) -> None:
+        with closing(self._connect()) as db:
+            db.execute("PRAGMA journal_mode = WAL")
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS jobs (
+                    id TEXT PRIMARY KEY,
+                    kind TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (
+                        status IN ('pending', 'running', 'succeeded', 'failed')
+                    ),
+                    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+                    max_attempts INTEGER NOT NULL CHECK (max_attempts >= 1),
+                    available_at REAL NOT NULL,
+                    worker_id TEXT,
+                    locked_at REAL,
+                    lease_until REAL,
+                    last_error TEXT,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    dedupe_key TEXT UNIQUE
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS schedules (
+                    id TEXT PRIMARY KEY,
+                    kind TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    interval_seconds REAL NOT NULL CHECK (interval_seconds > 0),
+                    next_run_at REAL NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+                    last_enqueued_job_id TEXT,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                )
+                """
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS jobs_ready_idx "
+                "ON jobs(status, available_at, created_at)"
+            )
+            db.execute("CREATE INDEX IF NOT EXISTS jobs_lease_idx ON jobs(status, lease_until)")
+
+    @staticmethod
+    def _decode(row: sqlite3.Row) -> dict[str, Any]:
+        item = dict(row)
+        item["payload"] = json.loads(item["payload"])
+        return item
+
+    def enqueue(
+        self,
+        kind: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        max_attempts: int = 5,
+        delay: float = 0,
+        dedupe_key: str | None = None,
+    ) -> str:
+        if not isinstance(kind, str) or not kind.strip() or len(kind) > 64:
+            raise ValueError("job kind must be a non-empty string of at most 64 characters")
+        if payload is not None and not isinstance(payload, dict):
+            raise ValueError("job payload must be an object")
+        if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1:
+            raise ValueError("max_attempts must be a positive integer")
+        if isinstance(delay, bool):
+            raise ValueError("delay must be a finite non-negative number")
+        try:
+            delay = float(delay)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("delay must be a finite non-negative number") from exc
+        if not math.isfinite(delay) or delay < 0 or not math.isfinite(time.time() + delay):
+            raise ValueError("delay must be a finite non-negative number")
+        if dedupe_key is not None and (not isinstance(dedupe_key, str) or not dedupe_key.strip()):
+            raise ValueError("dedupe_key must be a non-empty string")
+        now = time.time()
+        job_id = str(uuid.uuid4())
+        encoded = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"))
+        with closing(self._connect()) as db:
+            cursor = db.execute(
+                """
+                INSERT OR IGNORE INTO jobs (
+                    id, kind, payload, status, attempts, max_attempts,
+                    available_at, created_at, updated_at, dedupe_key
+                ) VALUES (?, ?, ?, 'pending', 0, ?, ?, ?, ?, ?)
+                """,
+                (job_id, kind.strip(), encoded, max_attempts, now + delay, now, now, dedupe_key),
+            )
+            if cursor.rowcount == 0 and dedupe_key:
+                existing = db.execute(
+                    "SELECT id FROM jobs WHERE dedupe_key = ?", (dedupe_key,)
+                ).fetchone()
+                if existing:
+                    return str(existing["id"])
+        return job_id
+
+    def claim(self, worker_id: str, *, lease_seconds: float = 300) -> dict[str, Any] | None:
+        if not isinstance(worker_id, str) or not worker_id.strip():
+            raise ValueError("worker_id must be a non-empty string")
+        if isinstance(lease_seconds, bool):
+            raise ValueError("lease_seconds must be a finite positive number")
+        try:
+            lease_seconds = float(lease_seconds)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("lease_seconds must be a finite positive number") from exc
+        now = time.time()
+        if (
+            not math.isfinite(lease_seconds)
+            or lease_seconds <= 0
+            or not math.isfinite(now + lease_seconds)
+        ):
+            raise ValueError("lease_seconds must be a finite positive number")
+        with closing(self._connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            # A crashed worker's lease expires. Retry if budget remains, otherwise
+            # make the failure terminal instead of leaving an immortal running job.
+            db.execute(
+                """
+                UPDATE jobs
+                SET status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'pending' END,
+                    worker_id = NULL, locked_at = NULL, lease_until = NULL,
+                    available_at = ?, updated_at = ?,
+                    last_error = COALESCE(last_error, 'worker lease expired')
+                WHERE status = 'running' AND lease_until <= ?
+                """,
+                (now, now, now),
+            )
+            row = db.execute(
+                """
+                SELECT * FROM jobs AS candidate
+                WHERE candidate.status = 'pending'
+                  AND candidate.available_at <= ?
+                  AND (
+                    candidate.kind != 'pipeline'
+                    OR NOT EXISTS (
+                        SELECT 1 FROM jobs AS active
+                        WHERE active.kind = 'pipeline'
+                          AND active.status = 'running'
+                          AND active.lease_until > ?
+                    )
+                  )
+                ORDER BY candidate.available_at, candidate.created_at
+                LIMIT 1
+                """,
+                (now, now),
+            ).fetchone()
+            if row is None:
+                db.commit()
+                return None
+            changed = db.execute(
+                """
+                UPDATE jobs
+                SET status = 'running', attempts = attempts + 1,
+                    worker_id = ?, locked_at = ?, lease_until = ?, updated_at = ?
+                WHERE id = ? AND status = 'pending'
+                """,
+                (worker_id, now, now + lease_seconds, now, row["id"]),
+            ).rowcount
+            if changed != 1:
+                db.rollback()
+                return None
+            claimed = db.execute("SELECT * FROM jobs WHERE id = ?", (row["id"],)).fetchone()
+            db.commit()
+            return self._decode(claimed)
+
+    def heartbeat(self, job_id: str, worker_id: str, *, lease_seconds: float = 300) -> bool:
+        if isinstance(lease_seconds, bool):
+            raise ValueError("lease_seconds must be a finite positive number")
+        try:
+            lease_seconds = float(lease_seconds)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("lease_seconds must be a finite positive number") from exc
+        now = time.time()
+        if (
+            not math.isfinite(lease_seconds)
+            or lease_seconds <= 0
+            or not math.isfinite(now + lease_seconds)
+        ):
+            raise ValueError("lease_seconds must be a finite positive number")
+        with closing(self._connect()) as db:
+            changed = db.execute(
+                """
+                UPDATE jobs SET lease_until = ?, updated_at = ?
+                WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_until > ?
+                """,
+                (now + lease_seconds, now, job_id, worker_id, now),
+            ).rowcount
+        return changed == 1
+
+    def complete(self, job_id: str, worker_id: str) -> bool:
+        now = time.time()
+        with closing(self._connect()) as db:
+            changed = db.execute(
+                """
+                UPDATE jobs
+                SET status = 'succeeded', worker_id = NULL, locked_at = NULL,
+                    lease_until = NULL, last_error = NULL, updated_at = ?
+                WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_until > ?
+                """,
+                (now, job_id, worker_id, now),
+            ).rowcount
+        return changed == 1
+
+    def fail(
+        self,
+        job_id: str,
+        worker_id: str,
+        error: str,
+        *,
+        retry_delay: float | None = None,
+    ) -> bool:
+        if retry_delay is not None:
+            if isinstance(retry_delay, bool):
+                raise ValueError("retry_delay must be a finite non-negative number")
+            try:
+                retry_delay = float(retry_delay)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("retry_delay must be a finite non-negative number") from exc
+            if (
+                not math.isfinite(retry_delay)
+                or retry_delay < 0
+                or not math.isfinite(time.time() + retry_delay)
+            ):
+                raise ValueError("retry_delay must be a finite non-negative number")
+        now = time.time()
+        with closing(self._connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                """
+                SELECT attempts, max_attempts FROM jobs
+                WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_until > ?
+                """,
+                (job_id, worker_id, now),
+            ).fetchone()
+            if row is None:
+                db.rollback()
+                return False
+            terminal = row["attempts"] >= row["max_attempts"]
+            delay = (
+                min(3600.0, 2 ** min(row["attempts"], 10))
+                if retry_delay is None
+                else max(0.0, retry_delay)
+            )
+            changed = db.execute(
+                """
+                UPDATE jobs
+                SET status = ?, available_at = ?, worker_id = NULL,
+                    locked_at = NULL, lease_until = NULL, last_error = ?,
+                    updated_at = ?
+                WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_until > ?
+                """,
+                (
+                    "failed" if terminal else "pending",
+                    now if terminal else now + delay,
+                    str(error)[:4000],
+                    now,
+                    job_id,
+                    worker_id,
+                    now,
+                ),
+            ).rowcount
+            db.commit()
+        return changed == 1
+
+    def get(self, job_id: str) -> dict[str, Any] | None:
+        with closing(self._connect()) as db:
+            row = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return self._decode(row) if row else None
+
+    def list(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        if status is not None and status not in {"pending", "running", "succeeded", "failed"}:
+            raise ValueError("invalid job status")
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        with closing(self._connect()) as db:
+            if status:
+                rows = db.execute(
+                    "SELECT * FROM jobs WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+                    (status, limit),
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
+                ).fetchall()
+        return [self._decode(row) for row in rows]
+
+    def add_schedule(
+        self,
+        schedule_id: str,
+        kind: str,
+        payload: dict[str, Any] | None,
+        interval_seconds: float,
+        *,
+        first_run_at: float | None = None,
+    ) -> None:
+        if not isinstance(schedule_id, str) or not schedule_id.strip() or len(schedule_id) > 128:
+            raise ValueError("schedule id must be a non-empty string of at most 128 characters")
+        if not isinstance(kind, str) or not kind.strip() or len(kind) > 64:
+            raise ValueError("job kind must be a non-empty string of at most 64 characters")
+        if payload is not None and not isinstance(payload, dict):
+            raise ValueError("schedule payload must be an object")
+        if isinstance(interval_seconds, bool):
+            raise ValueError("interval_seconds must be a finite positive number")
+        try:
+            interval = float(interval_seconds)
+            first_run = time.time() if first_run_at is None else float(first_run_at)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("schedule timing values must be numbers") from exc
+        if not math.isfinite(interval) or interval <= 0 or not math.isfinite(first_run):
+            raise ValueError("schedule timing values must be finite and interval positive")
+        if first_run + interval <= first_run:
+            raise ValueError("interval_seconds is too small to advance the scheduled timestamp")
+        now = time.time()
+        encoded = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"))
+        with closing(self._connect()) as db:
+            try:
+                db.execute(
+                    """
+                    INSERT INTO schedules (
+                        id, kind, payload, interval_seconds, next_run_at,
+                        enabled, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                    """,
+                    (
+                        schedule_id.strip(),
+                        kind.strip(),
+                        encoded,
+                        interval,
+                        first_run,
+                        now,
+                        now,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ValueError(f"schedule already exists: {schedule_id}") from exc
+
+    def list_schedules(self, *, include_disabled: bool = True) -> list[dict[str, Any]]:
+        with closing(self._connect()) as db:
+            if include_disabled:
+                rows = db.execute("SELECT * FROM schedules ORDER BY id").fetchall()
+            else:
+                rows = db.execute(
+                    "SELECT * FROM schedules WHERE enabled = 1 ORDER BY id"
+                ).fetchall()
+        schedules = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = json.loads(item["payload"])
+            item["enabled"] = bool(item["enabled"])
+            schedules.append(item)
+        return schedules
+
+    def disable_schedule(self, schedule_id: str) -> bool:
+        with closing(self._connect()) as db:
+            changed = db.execute(
+                "UPDATE schedules SET enabled = 0, updated_at = ? WHERE id = ? AND enabled = 1",
+                (time.time(), schedule_id),
+            ).rowcount
+        return changed == 1
+
+    def enable_schedule(self, schedule_id: str) -> bool:
+        with closing(self._connect()) as db:
+            changed = db.execute(
+                "UPDATE schedules SET enabled = 1, updated_at = ? WHERE id = ? AND enabled = 0",
+                (time.time(), schedule_id),
+            ).rowcount
+        return changed == 1
+
+    def enqueue_due_schedules(self, *, now: float | None = None, limit: int = 100) -> int:
+        current = time.time() if now is None else float(now)
+        if not math.isfinite(current):
+            raise ValueError("now must be finite")
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        enqueued = 0
+        with closing(self._connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            due = db.execute(
+                """
+                SELECT * FROM schedules
+                WHERE enabled = 1 AND next_run_at <= ?
+                ORDER BY next_run_at, id
+                LIMIT ?
+                """,
+                (current, limit),
+            ).fetchall()
+            for schedule in due:
+                scheduled_at = float(schedule["next_run_at"])
+                interval = float(schedule["interval_seconds"])
+                skipped = max(0, int((current - scheduled_at) // interval))
+                next_run = scheduled_at + (skipped + 1) * interval
+                if not math.isfinite(next_run) or next_run <= current:
+                    raise ValueError(
+                        f"schedule {schedule['id']!r} interval cannot advance "
+                        "beyond the current timestamp"
+                    )
+                dedupe_key = f"schedule:{schedule['id']}:{scheduled_at.hex()}"
+                job_id = str(uuid.uuid4())
+                cursor = db.execute(
+                    """
+                    INSERT OR IGNORE INTO jobs (
+                        id, kind, payload, status, attempts, max_attempts,
+                        available_at, created_at, updated_at, dedupe_key
+                    ) VALUES (?, ?, ?, 'pending', 0, 5, ?, ?, ?, ?)
+                    """,
+                    (
+                        job_id,
+                        schedule["kind"],
+                        schedule["payload"],
+                        current,
+                        current,
+                        current,
+                        dedupe_key,
+                    ),
+                )
+                if cursor.rowcount == 1:
+                    enqueued += 1
+                else:
+                    existing = db.execute(
+                        "SELECT id FROM jobs WHERE dedupe_key = ?", (dedupe_key,)
+                    ).fetchone()
+                    job_id = str(existing["id"])
+                db.execute(
+                    """
+                    UPDATE schedules
+                    SET next_run_at = ?, last_enqueued_job_id = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (next_run, job_id, current, schedule["id"]),
+                )
+            db.commit()
+        return enqueued
+
+    def counts(self) -> dict[str, int]:
+        with closing(self._connect()) as db:
+            rows = db.execute("SELECT status, COUNT(*) AS total FROM jobs GROUP BY status")
+            counts = {name: 0 for name in ("pending", "running", "succeeded", "failed")}
+            counts.update({row["status"]: row["total"] for row in rows})
+        return counts
