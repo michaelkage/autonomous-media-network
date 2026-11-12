@@ -705,9 +705,7 @@ def test_tiktok_rejects_invalid_timeout_and_poll_interval(value: object) -> None
 @pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan"), True, "1"])
 def test_tiktok_sqlite_limiter_rejects_invalid_interval(tmp_path: Path, value: object) -> None:
     with pytest.raises(ValueError, match="finite"):
-        SQLiteTokenRateLimiter(
-            tmp_path / "jobs.sqlite3", "token-key", min_interval=value
-        )  # type: ignore[arg-type]
+        SQLiteTokenRateLimiter(tmp_path / "jobs.sqlite3", "token-key", min_interval=value)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("value", [float("inf"), float("nan"), True, "1"])
