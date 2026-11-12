@@ -39,12 +39,20 @@ class InstagramPublisher(Publisher):
         max_polls: int = 5,
         operation_db: Path | None = None,
     ) -> None:
+        if not isinstance(public_base_url, str) or not public_base_url.strip():
+            raise ValueError("Instagram media base URL must be public HTTPS")
         parsed = urlparse(public_base_url)
         if not isinstance(access_token, str) or not access_token.strip():
             raise ValueError("Instagram access token is required")
-        if not isinstance(instagram_user_id, str) or re.fullmatch(r"[0-9]+", instagram_user_id) is None:
+        if (
+            not isinstance(instagram_user_id, str)
+            or re.fullmatch(r"[0-9]+", instagram_user_id) is None
+        ):
             raise ValueError("Instagram user ID must contain only decimal digits")
-        if not isinstance(api_version, str) or re.fullmatch(r"v[0-9]+\.[0-9]+", api_version) is None:
+        if (
+            not isinstance(api_version, str)
+            or re.fullmatch(r"v[0-9]+\.[0-9]+", api_version) is None
+        ):
             raise ValueError("api_version must use the format vMAJOR.MINOR")
         try:
             valid_port = parsed.port is None or 1 <= parsed.port <= 65535
@@ -59,7 +67,10 @@ class InstagramPublisher(Publisher):
             or parsed.fragment
             or not valid_port
         ):
-            raise ValueError("Instagram media base URL must be public HTTPS without credentials, query, or fragment")
+            raise ValueError(
+                "Instagram media base URL must be public HTTPS without credentials, "
+                "query, or fragment"
+            )
         if isinstance(max_polls, bool) or not isinstance(max_polls, int) or max_polls < 1:
             raise ValueError("max_polls must be a positive integer")
         if (
