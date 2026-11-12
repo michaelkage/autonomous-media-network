@@ -128,7 +128,10 @@ class TikTokPublisher(Publisher):
             or not math.isfinite(poll_interval)
             or poll_interval < 0
         ):
-            raise ValueError("timeout must be positive and poll_interval must be non-negative; both must be finite numbers")
+            raise ValueError(
+                "timeout must be positive and poll_interval must be non-negative; "
+                "both must be finite numbers"
+            )
         if isinstance(max_polls, bool) or not isinstance(max_polls, int) or max_polls < 0:
             raise ValueError("max_polls must be a non-negative integer")
         self.token, self.public_base_url = access_token, public_base_url.rstrip("/")
