@@ -467,3 +467,20 @@ def test_tiktok_redacts_access_token_from_provider_error_logs(
     output = capsys.readouterr().out
     assert token not in output
     assert "[REDACTED]" in output
+
+def test_tiktok_rejects_malformed_provider_json_without_crashing(tmp_path: Path) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    publisher = TikTokPublisher(
+        "test-access-token",
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        max_polls=0,
+    )
+    publisher.rate_limiter.wait = MagicMock()
+    response = _response({})
+    response.json.return_value = []
+    publisher.session.post = MagicMock(return_value=response)
+
+    assert publisher.publish(image, "caption") is False
