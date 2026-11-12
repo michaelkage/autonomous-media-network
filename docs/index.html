@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f0eee8">
+<title>Autonomous Media Network — Field Manual</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap');
+:root{--paper:#f0eee8;--ink:#171916;--muted:#6e7169;--line:#c9c8bf;--red:#c53d2d;--green:#365b48;--amber:#a66a25;--mono:'DM Mono',monospace;--sans:'DM Sans',sans-serif;--serif:'Newsreader',Georgia,serif}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55}a{color:inherit}button,input,select{font:inherit}.shell{max-width:1240px;margin:auto;padding:0 34px}.mast{border-bottom:1px solid var(--ink);padding:17px 0;display:flex;justify-content:space-between;gap:20px;align-items:center;font:11px var(--mono);text-transform:uppercase;letter-spacing:.08em}.mast strong{font-weight:500}.mast nav{display:flex;gap:19px;flex-wrap:wrap}.mast a{text-decoration:none;color:var(--muted)}.mast a:hover{color:var(--red)}
+.hero{padding:64px 0 42px;display:grid;grid-template-columns:1.1fr .9fr;gap:50px;border-bottom:1px solid var(--ink)}.eyebrow,.kicker{font:11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--red)}h1{font:600 clamp(48px,7vw,88px)/.94 var(--serif);letter-spacing:-.045em;margin:17px 0 24px;max-width:760px}h1 span{color:var(--red)}.lede{font-size:17px;max-width:610px;color:#454941}.hero-aside{align-self:end;border-left:1px solid var(--line);padding:10px 0 8px 24px}.hero-aside .state{font:12px var(--mono);color:var(--green);text-transform:uppercase}.hero-aside p{font:15px/1.65 var(--sans);max-width:390px}.meta{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--ink)}.meta div{padding:17px 18px 17px 0;border-right:1px solid var(--line)}.meta div+div{padding-left:18px}.meta div:last-child{border:0}.meta label{display:block;color:var(--muted);font:10px var(--mono);text-transform:uppercase;letter-spacing:.1em}.meta b{font:14px var(--mono);font-weight:400}
+main{display:grid;grid-template-columns:210px 1fr;gap:54px;padding:46px 0}.toc{position:sticky;top:22px;align-self:start;font:11px var(--mono)}.toc span{display:block;color:var(--muted);margin-bottom:12px;text-transform:uppercase}.toc a{display:block;text-decoration:none;padding:7px 0;border-bottom:1px solid var(--line);color:#55594f}.toc a:hover{color:var(--red)}article section{padding:0 0 58px;margin-bottom:50px;border-bottom:1px solid var(--line);scroll-margin-top:28px}.section-head{display:flex;justify-content:space-between;align-items:baseline;gap:20px;margin-bottom:20px}.section-head h2{font:600 38px/1.05 var(--serif);letter-spacing:-.025em;margin:0}.num{font:11px var(--mono);color:var(--red)}.intro{max-width:740px;color:#55594f;margin:0 0 24px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.panel{border:1px solid var(--line);padding:19px;background:rgba(255,255,255,.18)}.panel h3{font:600 20px var(--serif);margin:0 0 8px}.panel p{font-size:13px;color:#55594f;margin:0}.tag{font:10px var(--mono);color:var(--red);text-transform:uppercase;letter-spacing:.08em}.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:26px 0}.step{border-top:2px solid var(--ink);padding:11px 9px 8px 0;min-height:100px}.step b{font:11px var(--mono);color:var(--red)}.step strong{display:block;font-size:13px;margin:7px 0 3px}.step small{font-size:11px;color:var(--muted)}
+.bench{border:1px solid var(--ink);background:#e8e6df}.bench-top{padding:17px 20px;border-bottom:1px solid var(--ink);display:flex;justify-content:space-between;gap:15px;align-items:center}.bench-top strong{font:13px var(--mono);text-transform:uppercase}.live{font:10px var(--mono);color:var(--green)}.bench-body{display:grid;grid-template-columns:1fr 1fr}.controls{padding:22px;border-right:1px solid var(--line)}.result{padding:22px;min-height:280px}.field{margin:0 0 15px}.field label{display:block;font:10px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}.field input,.field select{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:0;padding:10px;color:var(--ink);outline:none}.field input:focus,.field select:focus{border-color:var(--red)}.fields2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.checkline{display:flex;align-items:center;gap:9px;font-size:12px;margin:10px 0 16px}.action{background:var(--ink);color:var(--paper);border:0;padding:12px 17px;font:11px var(--mono);text-transform:uppercase;cursor:pointer}.action:hover{background:var(--red)}.action.secondary{background:transparent;color:var(--ink);border:1px solid var(--ink)}.output-state{font:12px var(--mono);text-transform:uppercase;margin-bottom:12px}.output-state.pass{color:var(--green)}.output-state.fail{color:var(--red)}.output-state.idle{color:var(--muted)}.reasons{padding-left:17px;color:#55594f;font-size:12px}.receipt{font:11px var(--mono);border-top:1px solid var(--line);padding-top:12px;margin-top:15px;white-space:pre-wrap;color:#55594f}.disclaimer{font-size:11px;color:var(--muted);padding:12px 20px;border-top:1px solid var(--line)}
+pre,code{font-family:var(--mono)}pre{overflow:auto;background:#1b1d19;color:#e9e7df;padding:18px;font-size:12px;line-height:1.65}.inline-code{font:11px var(--mono);background:#e1dfd7;padding:2px 5px}.data-table{width:100%;border-collapse:collapse;font-size:12px}.data-table th{text-align:left;color:var(--muted);font:10px var(--mono);text-transform:uppercase}.data-table th,.data-table td{padding:11px 8px;border-bottom:1px solid var(--line);vertical-align:top}.data-table td:first-child{font-family:var(--mono);white-space:nowrap}.callout{border-left:3px solid var(--red);padding:13px 17px;background:#e8e5dc;font-size:13px;color:#42463f;margin:22px 0}.callout strong{color:var(--ink)}.small{font-size:11px;color:var(--muted)}.foot{padding:25px 0 42px;border-top:1px solid var(--ink);display:flex;justify-content:space-between;gap:20px;font:10px var(--mono);text-transform:uppercase;color:var(--muted)}.foot a{color:var(--ink)}.api{font:11px var(--mono);color:var(--muted)}
+@media(max-width:800px){.shell{padding:0 18px}.hero{grid-template-columns:1fr;gap:20px;padding-top:43px}.hero-aside{border-left:0;border-top:1px solid var(--line);padding:17px 0 0}.meta{grid-template-columns:1fr 1fr}.meta div{border-bottom:1px solid var(--line)}.meta div:nth-child(2){border-right:0}.meta div:nth-child(3){padding-left:0;border-bottom:0}.meta div+div{padding-left:12px}main{grid-template-columns:1fr;padding-top:25px;gap:25px}.toc{position:static;display:flex;gap:12px;overflow:auto;white-space:nowrap;border-bottom:1px solid var(--line);padding-bottom:10px}.toc span{display:none}.toc a{border:0;padding:0}.flow{grid-template-columns:repeat(2,1fr)}.bench-body{grid-template-columns:1fr}.controls{border-right:0;border-bottom:1px solid var(--line)}.grid2{grid-template-columns:1fr}.section-head h2{font-size:32px}}
+@media(max-width:440px){.mast{align-items:flex-start;flex-direction:column}.mast nav{gap:12px}.fields2{grid-template-columns:1fr}.meta b{font-size:12px}}
+.is-embedded .mast,.is-embedded .foot{display:none}
+</style>
+</head>
+<body>
+<div class="shell">
+<header class="mast"><strong>AMN / Field Manual <span style="color:var(--red)">—</span> v0.1</strong><nav><a href="#bench">Workbench</a><a href="#pipeline">Pipeline</a><a href="#rules">Rules</a><a href="#operate">Operate</a><a href="#limits">Limits</a></nav></header>
+<div class="hero">
+<div><div class="eyebrow">System notes / 001 / Media operations</div><h1>Autonomous<br><span>Media</span> Network.</h1><p class="lede">A file-based media intake line. Fetch, inspect, reject, watermark, record—and optionally hand approved assets to a publisher. The manifest is the hand-off contract.</p></div>
+<aside class="hero-aside"><div class="state">● Source-verified product scope</div><p>This repository automates a narrow, auditable workflow. It does not generate original media, understand image semantics, or autonomously decide what is culturally safe to post.</p><div class="api" id="repo-meta">Repository metadata loading…</div></aside>
+</div>
+<div class="meta"><div><label>Current release</label><b id="release">Checking GitHub…</b></div><div><label>Latest commit</label><b id="commit">Checking…</b></div><div><label>Runtime</label><b>Python ≥ 3.11</b></div></div>
+<main>
+<nav class="toc"><span>Contents</span><a href="#bench">01 / Bench</a><a href="#pipeline">02 / Flow</a><a href="#rules">03 / Vetting</a><a href="#records">04 / Records</a><a href="#operate">05 / Operate</a><a href="#publish">06 / Publish</a><a href="#limits">07 / Boundaries</a></nav>
+<article>
+<section id="bench">
+<div class="section-head"><h2>Try the gate.</h2><span class="num">01 — LOCAL SIMULATION</span></div>
+<p class="intro">Change the inputs and run a single hypothetical asset through the repository's configured acceptance rules. This is a browser-side model of <span class="inline-code">amn.vetting.vet()</span>; it does not upload a file, contact Reddit, write to disk, or publish.</p>
+<div class="bench">
+<div class="bench-top"><strong>Asset acceptance bench</strong><span class="live">● CLIENT-SIDE / NO NETWORK</span></div>
+<div class="bench-body">
+<div class="controls">
+<div class="fields2"><div class="field"><label for="width">Width / px</label><input id="width" type="number" min="0" value="1600"></div><div class="field"><label for="height">Height / px</label><input id="height" type="number" min="0" value="1200"></div></div>
+<div class="field"><label for="format">Decoded image format</label><select id="format"><option>JPEG</option><option>PNG</option><option>WEBP</option><option>GIF</option><option>Unknown</option></select></div>
+<div class="fields2"><div class="field"><label for="likes">Likes / upvotes</label><input id="likes" type="number" min="0" value="850"></div><div class="field"><label for="views">Views (0 = unavailable)</label><input id="views" type="number" min="0" value="20000"></div></div>
+<div class="fields2"><div class="field"><label for="comments">Comments</label><input id="comments" type="number" min="0" value="80"></div><div class="field"><label for="shares">Shares</label><input id="shares" type="number" min="0" value="70"></div></div>
+<label class="checkline"><input id="sidecar" type="checkbox" checked> Metrics sidecar exists and parses</label>
+<button class="action" id="run">Run vetting check ↗</button>
+</div>
+<div class="result" aria-live="polite"><div class="output-state idle" id="status">Awaiting input</div><h3 id="verdict" style="font:600 28px var(--serif);margin:0 0 10px">No decision yet.</h3><p id="summary" class="small">Default thresholds are loaded into this bench.</p><ul id="reasons" class="reasons"></ul><div class="receipt" id="receipt">RESULT / —</div></div>
+</div>
+<div class="disclaimer">Modelled thresholds: 1080 × 1080 minimum, 500 minimum likes, 2% engagement rate only when a real view count exists, JPEG/PNG/WEBP only. Values are editable in pyproject.toml.</div>
+</div>
+</section>
+<section id="pipeline">
+<div class="section-head"><h2>One-way flow.</h2><span class="num">02 — ARCHITECTURE</span></div>
+<p class="intro">The pipeline is a local filesystem workflow. Each image is paired with a JSON sidecar; the run drains the inbox by routing each candidate to output or rejection.</p>
+<div class="flow">
+<div class="step"><b>01 / INTAKE</b><strong>inbox/</strong><small>Image + same-stem .json metrics</small></div>
+<div class="step"><b>02 / DECIDE</b><strong>Vetting + dHash</strong><small>Hard rules and near-duplicate check</small></div>
+<div class="step"><b>03 / PROCESS</b><strong>Watermark</strong><small>Accepted image exported as JPEG</small></div>
+<div class="step"><b>04 / ROUTE</b><strong>outbox / rejected</strong><small>Rejected files retain sidecars</small></div>
+<div class="step"><b>05 / HAND-OFF</b><strong>manifest.json</strong><small>Publisher reads passing records</small></div>
+</div>
+<div class="grid2">
+<div class="panel"><span class="tag">Accepted</span><h3>outbox/</h3><p>Watermarked JPEG output. Original inbox image and sidecar are removed after successful processing.</p></div>
+<div class="panel"><span class="tag">Rejected</span><h3>rejected/</h3><p>Rejected image and sidecar are moved together. Reasons are recorded in the manifest.</p></div>
+<div class="panel"><span class="tag">State</span><h3>build/hashes.json</h3><p>Persistent list of 64-bit dHashes used to prevent near-identical images from being accepted again.</p></div>
+<div class="panel"><span class="tag">Audit</span><h3>build/manifest.json</h3><p>Timestamp, counts, accepted provenance and digest, rejected reasons, and processing errors.</p></div>
+</div>
+<div class="callout"><strong>Important ordering detail:</strong> duplicate detection runs before the metrics and quality vetting. A duplicate is rejected with its own reason, and it is not re-recorded as a new hash.</div>
+</section>
+<section id="rules">
+<div class="section-head"><h2>The acceptance contract.</h2><span class="num">03 — HARD GATES</span></div>
+<p class="intro">There is no warning-only path. A candidate must pass every applicable rule. The values below are the defaults shipped in <span class="inline-code">pyproject.toml</span>, not universal platform recommendations.</p>
+<table class="data-table"><thead><tr><th>Rule</th><th>Default</th><th>Behaviour</th></tr></thead><tbody>
+<tr><td>min_width</td><td>1080 px</td><td>Reject if width is below the configured minimum.</td></tr>
+<tr><td>min_height</td><td>1080 px</td><td>Reject if height is below the configured minimum. Both dimensions must clear their floor.</td></tr>
+<tr><td>min_likes</td><td>500</td><td>Absolute likes/upvotes floor applied to every source.</td></tr>
+<tr><td>min_engagement_rate</td><td>2.0%</td><td>(likes + comments + shares) ÷ views. Checked only when views is positive and reported.</td></tr>
+<tr><td>allowed_formats</td><td>JPEG, PNG, WEBP</td><td>Format is taken from Pillow's decoder, not merely the filename extension.</td></tr>
+<tr><td>metrics sidecar</td><td>Required</td><td>Missing, malformed, negative, or unparseable metrics fail the candidate.</td></tr>
+</tbody></table>
+<div class="callout"><strong>Reddit exception:</strong> Reddit's public JSON endpoint does not provide views. The fetcher writes score as likes/upvotes and comments, and deliberately omits views. Therefore the rate check is skipped for Reddit; the 500-like floor still applies. Do not fabricate a denominator to make the rate gate pass.</div>
+<p class="intro">Duplicate detection uses a 64-bit difference hash (dHash). A candidate within 5 bits of a stored hash is treated as a duplicate. This is perceptual similarity, not robust image identity or copyright detection.</p>
+</section>
+<section id="records">
+<div class="section-head"><h2>Data shapes.</h2><span class="num">04 — FILE CONTRACTS</span></div>
+<p class="intro">The pipeline uses a paired image and same-stem JSON sidecar. Every field defaults to zero when omitted; views is optional, but a sidecar itself is mandatory.</p>
+<h3 style="font:600 20px var(--serif)">Example sidecar</h3>
+<pre>{
+  "views": 50000,
+  "likes": 2400,
+  "comments": 150,
+  "shares": 320
+}</pre>
+<p class="small">For a Reddit item, views is omitted rather than estimated. The fetcher uses Reddit's score as likes/upvotes; it does not claim that score is a literal like count.</p>
+<h3 style="font:600 20px var(--serif);margin-top:26px">Manifest shape</h3>
+<pre>{
+  "generated_at": "UTC ISO-8601 timestamp",
+  "counts": {
+    "passed": 1,
+    "rejected": 1,
+    "errors": 0
+  },
+  "passed": [{
+    "source": "post.jpg",
+    "output": "outbox/post.jpg",
+    "width": 1600,
+    "height": 1200,
+    "caption": "...",
+    "engagement_rate": 0.05,
+    "sha256": "..."
+  }],
+  "rejected": [{
+    "source": "small.jpg",
+    "reasons": ["..."]
+  }],
+  "errors": []
+}</pre>
+<p class="small">The engagement_rate field is included when metrics exist; the SHA-256 digest is included for non-dry-run accepted output. This manifest is the publisher's input contract.</p>
+</section>
+<section id="operate">
+<div class="section-head"><h2>Run it locally.</h2><span class="num">05 — OPERATOR NOTES</span></div>
+<p class="intro">Python 3.11 or newer. Runtime dependencies are Pillow and Requests. Pytest and Ruff are in the dev extra. Bluesky's AT Protocol client is an optional extra.</p>
+<pre># Create and activate a virtual environment
+python -m venv .venv
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+
+# Install the package and developer tools
+pip install -e ".[dev]"
+
+# Verify
+ruff check .
+ruff format --check .
+pytest -q
+
+# Fetch Reddit image posts into inbox/
+amn fetch --source reddit --query earthporn --limit 10
+
+# Vet, watermark, route and write the manifest
+amn run --watermark "@yourhandle"
+
+# Safe inspection: no writes, moves or deletes
+amn run --dry-run</pre>
+<div class="callout"><strong>Thresholds are configuration, not CLI flags.</strong> Edit the <span class="inline-code">[tool.amn]</span> table in <span class="inline-code">pyproject.toml</span>. A run with no watermark text still works, but the CLI warns when assets pass without a watermark value.</div>
+<p class="intro">The fetcher only accepts direct image URLs ending in .jpg, .jpeg, .png or .webp from Reddit's hot listing endpoint. It does not fetch arbitrary Reddit galleries, videos, or general web search results.</p>
+</section>
+<section id="publish">
+<div class="section-head"><h2>Publishing is opt-in.</h2><span class="num">06 — EXTERNAL EFFECTS</span></div>
+<p class="intro">The publishing layer reads passing entries from the manifest. The mock publisher logs to the console. The Bluesky publisher uploads an image and creates a post through the optional atproto dependency.</p>
+<pre># Safe dry publisher
+amn publish --platform mock
+
+# Install the optional Bluesky client
+pip install -e ".[bluesky]"
+
+# Configure credentials in environment variables
+# BLUESKY_HANDLE=yourname.bsky.social
+# BLUESKY_APP_PASSWORD=...
+
+amn publish --platform bluesky</pre>
+<div class="callout"><strong>Posting cannot be undone by this pipeline.</strong> The scheduled GitHub workflow keeps publishing disabled unless the repository variable <span class="inline-code">AMN_PUBLISH</span> is explicitly set to <span class="inline-code">true</span>. It then expects <span class="inline-code">BLUESKY_HANDLE</span> and <span class="inline-code">BLUESKY_APP_PASSWORD</span> secrets.</div>
+<p class="intro">The publisher reports successful post counts but does not persist per-item publish receipts, remote post identifiers, retry state, or idempotency keys. Re-running publish against the same manifest can therefore post the same assets again.</p>
+</section>
+<section id="limits">
+<div class="section-head"><h2>What it does not do.</h2><span class="num">07 — BOUNDARIES</span></div>
+<p class="intro">These are current implementation boundaries, not a roadmap disguised as shipped functionality.</p>
+<div class="grid2">
+<div class="panel"><span class="tag">Not implemented</span><h3>No AI vision</h3><p>Captioner is a rule-based placeholder based only on likes. It does not inspect image content, generate tags, or call an LLM.</p></div>
+<div class="panel"><span class="tag">Not implemented</span><h3>No broad source network</h3><p>Reddit is the only supported fetcher. Pexels was removed because its assets lacked the engagement metrics required by the gate.</p></div>
+<div class="panel"><span class="tag">Not implemented</span><h3>No editorial safety review</h3><p>No moderation, rights verification, attribution workflow, consent checks, brand-safety model, or human approval queue is present.</p></div>
+<div class="panel"><span class="tag">Not implemented</span><h3>No publish ledger</h3><p>No durable remote post IDs, dedupe across publisher retries, rollback, schedule planner, or per-platform delivery status.</p></div>
+<div class="panel"><span class="tag">Operational caveat</span><h3>Filesystem is the database</h3><p>Inbox, outbox, rejected, hashes and manifest are local files. There is no multi-worker coordination or hosted control plane.</p></div>
+<div class="panel"><span class="tag">Workflow caveat</span><h3>CI branch mismatch</h3><p>The repository's CI workflow currently triggers push events on master, while the repository default branch is main. Pull requests still trigger CI, but main pushes alone do not match that branch filter.</p></div>
+</div>
+<p class="intro" style="margin-top:22px">Security and reliability considerations: Reddit's public endpoint can rate-limit requests; source URLs and image bytes are not independently screened for hostile content; publishing uses long-lived app-password secrets; and a successful local manifest write does not guarantee a successful remote post.</p>
+</section>
+</article>
+</main>
+<footer class="foot"><span>AMN / Field Manual / Generated from repository implementation</span><span><a id="repo-link" href="https://github.com/michaelkage/autonomous-media-network">Source repository ↗</a></span></footer>
+</div>
+<script>
+(()=>{'use strict';
+if(window.self!==window.top)document.body.classList.add('is-embedded');
+const $=id=>document.getElementById(id);
+const number=id=>Math.max(0,Number.parseInt($(id).value,10)||0);
+$('run').addEventListener('click',()=>{
+ const w=number('width'),h=number('height'),likes=number('likes'),views=number('views'),comments=number('comments'),shares=number('shares'),format=$('format').value;
+ const reasons=[];
+ if(!['JPEG','PNG','WEBP'].includes(format))reasons.push('Format '+format+' is not in the allowed formats (JPEG, PNG, WEBP).');
+ if(w<1080||h<1080)reasons.push('Resolution '+w+'x'+h+' is below the minimum 1080x1080.');
+ if(!$('sidecar').checked)reasons.push('No engagement metrics available: the sidecar is required.');
+ else {if(likes<500)reasons.push('Likes '+likes+' are below the minimum 500.');if(views>0&&(likes+comments+shares)/views<.02)reasons.push('Engagement rate '+(((likes+comments+shares)/views)*100).toFixed(2)+'% is below the minimum 2.00%.');}
+ const pass=reasons.length===0;
+ $('status').className='output-state '+(pass?'pass':'fail');$('status').textContent=pass?'● PASS / ALL GATES CLEARED':'● REJECT / HARD GATE FAILED';
+ $('verdict').textContent=pass?'Eligible for watermarking':'Do not process';
+ $('summary').textContent=pass?'This hypothetical asset clears the configured vetting rules. The real pipeline would watermark it and write an outbox record.':'Every failure is reported. The real pipeline would move the asset and sidecar into rejected/.';
+ $('reasons').replaceChildren();
+ if(pass){const li=document.createElement('li');li.textContent=views>0?'All rules passed. Engagement: '+(((likes+comments+shares)/views)*100).toFixed(2)+'%.':'All rules passed. View-rate check skipped because no real view count was supplied.';$('reasons').append(li);}
+ else reasons.forEach(reason=>{const li=document.createElement('li');li.textContent=reason;$('reasons').append(li);});
+ $('receipt').textContent='VETTING / '+(pass?'PASS':'REJECT')+'\nDIMENSIONS / '+w+' × '+h+'\nFORMAT / '+format+'\nLIKES / '+likes+'\nVIEWS / '+(views||'NOT REPORTED')+'\nROUTE / '+(pass?'outbox/ (after watermark)':'rejected/'); 
+});
+const path=location.pathname.split('/').filter(Boolean),owner=location.hostname.endsWith('.github.io')?location.hostname.split('.')[0]:(path[0]||'michaelkage'),repo=location.hostname.endsWith('.github.io')?(path[0]||'autonomous-media-network'):(path[1]||'autonomous-media-network');
+const slug=owner+'/'+repo;
+$('repo-link').href='https://github.com/'+slug;
+fetch('https://api.github.com/repos/'+slug,{headers:{Accept:'application/vnd.github+json'}}).then(r=>{if(!r.ok)throw Error('API '+r.status);return r.json()}).then(data=>{$('repo-meta').textContent=data.full_name+' / '+data.default_branch;$('repo-link').textContent='Source repository ↗';}).catch(()=>$('repo-meta').textContent='Repository metadata unavailable (offline or API limit)');
+fetch('https://api.github.com/repos/'+slug+'/releases/latest',{headers:{Accept:'application/vnd.github+json'}}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{$('release').textContent=d.tag_name||'Latest release';}).catch(()=>$('release').textContent='No published release');
+fetch('https://api.github.com/repos/'+slug+'/commits?per_page=1',{headers:{Accept:'application/vnd.github+json'}}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{$('commit').textContent=d[0]?.commit?.committer?.date?new Date(d[0].commit.committer.date).toISOString().slice(0,10):'Unavailable';}).catch(()=>$('commit').textContent='Unavailable');
+})();
+</script>
+</body>
+</html>
