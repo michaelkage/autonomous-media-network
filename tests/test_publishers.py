@@ -444,3 +444,26 @@ def test_telegram_redacts_bot_token_from_http_error_logs(tmp_path: Path, capsys)
     output = capsys.readouterr().out
     assert token not in output
     assert "[REDACTED]" in output
+
+
+def test_tiktok_redacts_access_token_from_provider_error_logs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    image = tmp_path / "photo.jpg"
+    image.write_bytes(b"image")
+    token = "sensitive-tiktok-access-token"
+    publisher = TikTokPublisher(
+        token,
+        "https://media.example.com/outbox",
+        "SELF_ONLY",
+        direct_post_enabled=True,
+        max_polls=0,
+    )
+    publisher.rate_limiter.wait = lambda: None
+    response = _response({"error": {"code": "invalid", "message": f"rejected {token}"}})
+    publisher.session.post = MagicMock(return_value=response)
+
+    assert publisher.publish(image, "caption") is False
+    output = capsys.readouterr().out
+    assert token not in output
+    assert "[REDACTED]" in output
