@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -45,10 +46,15 @@ class RedditPublisher(Publisher):
             or parsed.fragment
         ):
             raise ValueError("Reddit media URL must be public HTTPS without query or fragment")
-        if not user_agent.strip() or len(user_agent) > 200:
+        if not isinstance(user_agent, str) or not user_agent.strip() or len(user_agent) > 200:
             raise ValueError("a truthful Reddit API User-Agent (max 200 chars) is required")
-        if timeout <= 0:
-            raise ValueError("timeout must be positive")
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError("timeout must be a positive finite number")
         self.token = access_token
         self.subreddit = subreddit
         self.public_base_url = public_base_url.rstrip("/")
