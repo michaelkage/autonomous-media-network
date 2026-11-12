@@ -277,3 +277,40 @@ def test_delivery_event_snapshot_validates_limit(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="between 1 and 500"):
         delivery_event_snapshot(tmp_path / "missing.sqlite3", limit=0)
+
+
+
+def test_rate_limiter_rejects_non_finite_or_negative_configuration() -> None:
+    from amn.publish import RateLimiter
+
+    for kwargs in (
+        {"min_interval": -1},
+        {"min_interval": float("inf")},
+        {"max_backoff": -1},
+        {"max_backoff": float("nan")},
+    ):
+        with pytest.raises(ValueError):
+            RateLimiter(**kwargs)
+
+
+def test_rate_limiter_ignores_non_finite_retry_after() -> None:
+    from amn.publish import RateLimiter
+
+    limiter = RateLimiter(min_interval=0, max_backoff=5)
+    assert 0 <= limiter.retry_delay(0, float("inf")) <= 2
+    assert 0 <= limiter.retry_delay(0, float("nan")) <= 2
+
+
+def test_retry_after_parser_rejects_non_finite_header() -> None:
+    from amn.publish import _retry_after_from_response
+
+    class Response:
+        headers = {"Retry-After": "inf"}
+
+    assert _retry_after_from_response(Response()) is None
+
+
+@pytest.mark.parametrize("retries", [-1, True, 1.5, "2"])
+def test_publish_manifest_rejects_invalid_retry_count(manifest: Path, retries) -> None:
+    with pytest.raises(ValueError, match="retries must be a non-negative integer"):
+        publish_manifest(manifest, MockPublisher(), retries=retries)
