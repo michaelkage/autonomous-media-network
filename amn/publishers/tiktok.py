@@ -280,5 +280,6 @@ class TikTokPublisher(Publisher):
         except (requests.RequestException, OSError, ValueError, RuntimeError) as exc:
             response = exc.response if isinstance(exc, requests.RequestException) else None
             self.retry_after = _retry_after_from_response(response)
-            print(f"TikTok publish failed: {exc}")
+            message = str(exc).replace(self.token, "[REDACTED]")[:300]
+            print(f"TikTok publish failed: {message}")
             return False
