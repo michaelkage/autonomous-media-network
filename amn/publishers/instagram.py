@@ -250,6 +250,13 @@ class InstagramPublisher(Publisher):
             )
             db.commit()
 
+    @staticmethod
+    def _response_object(response: requests.Response, phase: str) -> dict:
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"Instagram returned an invalid {phase} response")
+        return payload
+
     def _container_status(self, container_id: str) -> str:
         response = self.session.get(
             f"{self.base}/{container_id}",
@@ -257,7 +264,7 @@ class InstagramPublisher(Publisher):
             timeout=self.timeout,
         )
         response.raise_for_status()
-        status = response.json().get("status_code")
+        status = self._response_object(response, "container status").get("status_code")
         if not isinstance(status, str) or not status:
             raise RuntimeError("Instagram did not return a media container status")
         return status
@@ -296,10 +303,13 @@ class InstagramPublisher(Publisher):
                     timeout=self.timeout,
                 )
                 created.raise_for_status()
-                container_id = created.json().get("id")
+                container_id = self._response_object(created, "media container").get("id")
+                if not isinstance(container_id, (str, int)) or isinstance(container_id, bool):
+                    raise RuntimeError("Instagram did not return a valid media container ID")
+                container_id = str(container_id)
                 if not container_id:
-                    raise RuntimeError("Instagram did not return a media container ID")
-                self._save_operation(operation_key, str(container_id), "processing")
+                    raise RuntimeError("Instagram did not return a valid media container ID")
+                self._save_operation(operation_key, container_id, "processing")
                 operation_status = "processing"
             else:
                 container_id, operation_status = operation
@@ -356,7 +366,8 @@ class InstagramPublisher(Publisher):
                 timeout=self.timeout,
             )
             published.raise_for_status()
-            if not published.json().get("id"):
+            published_id = self._response_object(published, "media publication").get("id")
+            if not isinstance(published_id, (str, int)) or isinstance(published_id, bool):
                 raise RuntimeError("Instagram did not confirm media publication")
             self._save_operation(operation_key, container_id, "complete")
             return True
